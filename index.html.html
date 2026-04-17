@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Spatial Toolkit XR</title>
+<style>
+#xr-root{position:fixed;inset:0;width:100%;height:100%;overflow:hidden;background:#000;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;z-index:9999}
+#xr-root *{box-sizing:border-box;margin:0;padding:0}
+#xr-overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0a0a0c;color:#d8d8d8;padding:20px;text-align:center;z-index:10}
+#xr-overlay h1{font-size:20px;font-weight:500;margin-bottom:8px}
+#xr-overlay p{font-size:13px;color:#555;max-width:340px;line-height:1.7;margin-bottom:4px}
+.xbtn{padding:11px 26px;border-radius:6px;border:1px solid #2a2a36;background:#1a1a24;color:#c8c8c8;font-size:14px;cursor:pointer;font-family:inherit;margin:5px 4px}
+.xbtn.p{background:#0F6E5615;border-color:#5DCAA5;color:#5DCAA5}
+#xr-msg{margin-top:12px;font-size:11px;color:#444;min-height:18px}
+#xr-stats{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);display:none;gap:10px;background:#111114ee;border:1px solid #1e1e24;border-radius:6px;padding:6px 14px;z-index:20;pointer-events:none;flex-wrap:wrap}
+.xst{display:flex;align-items:center;gap:5px;font-size:11px;color:#c8c8c8;white-space:nowrap}
+.xsd{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+#xr-canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+#xr-float{position:absolute;bottom:14px;right:14px;z-index:20;display:none}
+#xr-float button{padding:9px 18px;background:#0F6E5615;border:1px solid #5DCAA5;color:#5DCAA5;border-radius:7px;font-size:13px;cursor:pointer;font-family:inherit}
+</style>
+</head>
+<body>
+<div id="xr-root">
+  <canvas id="xr-canvas"></canvas>
+  <div id="xr-overlay">
+    <h1>Spatial Toolkit — Quest 3</h1>
+    <p>You are the spin-force source. Boids flock and orbit around you. The control panel floats as a virtual screen — grab it with your right controller.</p>
+    <div style="margin:14px 0">
+      <button class="xbtn p" id="xr-btn" onclick="xrEnter()">Enter XR — Quest 3</button>
+      <button class="xbtn" onclick="xrDesktop()">Desktop Preview</button>
+    </div>
+    <div id="xr-msg">Loading…</div>
+  </div>
+  <div id="xr-stats">
+    <div class="xst"><div class="xsd" style="background:#5DCAA5"></div>Pos: <span id="xs-pos">0,0,0</span></div>
+    <div class="xst"><div class="xsd" style="background:#AFA9EC"></div>Boids: <span id="xs-b">6</span></div>
+    <div class="xst"><div class="xsd" style="background:#EF9F27"></div>Field E: <span id="xs-e">0.00</span></div>
+    <div class="xst"><div class="xsd" style="background:#888"></div>FPS: <span id="xs-fps">90</span></div>
+  </div>
+  <div id="xr-float"><button onclick="xrEnter()">↗ Enter XR</button></div>
+</div>
+
+<!-- Three.js first, then all app code in one script block after -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ── globals — must be declared before ANY function runs ────────────────────
+var R,S,CAM,XRS=null;
+var BG,FG,PG,PM,PT,PC;
+var BOIDS=[],CTRLS=[];
+var KEYS={},MVX=0,MVY=0,DRAG=false,PMX=0,PMY=0;
+var YAW=0,PITCH=0,GRAB=false,GRABCTRL=null;
+var FPS=90,LT=0,TICK=0;
+var PW=1200,PH=700,_SL=[];
+var P={boidN:6,neighR:4,coh:0.018,sep:1.8,ali:0.04,maxV:2.5,
+       spinStr:8,spinR:5,spinDecay:2.5,chargeStr:6,chargeDecay:3.5,
+       fieldOp:0.7,showField:true};
+
+// ── wait for Three.js then boot ────────────────────────────────────────────
+(function waitForThree(){
+  if(typeof THREE==='undefined'){setTimeout(waitForThree,50);return;}
+  xrBoot();
+})();
+
+function cl(v,a,b){return Math.max(a,Math.min(b,v));}
+function lr(a,b,t){return a+(b-a)*t;}
+
+// ── boot ───────────────────────────────────────────────────────────────────
+function xrBoot(){
+  var canvas=document.getElementById('xr-canvas');
+  var root=document.getElementById('xr-root');
+  R=new THREE.WebGLRenderer({canvas:canvas,antialias:true,alpha:true});
+  R.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  R.setSize(root.offsetWidth||window.innerWidth, root.offsetHeight||window.innerHeight);
+  R.xr.enabled=true;
+  R.setClearColor(0x000000,0);
+
+  S=new THREE.Scene();
+  S.fog=new THREE.FogExp2(0x050510,0.015);
+  CAM=new THREE.PerspectiveCamera(75,(root.offsetWidth||window.innerWidth)/(root.offsetHeight||window.innerHeight),0.01,500);
+  CAM.position.set(0,1.6,2);
+
+  S.add(new THREE.AmbientLight(0xffffff,0.55));
+  var d1=new THREE.DirectionalLight(0xffffff,1.0);d1.position.set(5,10,5);S.add(d1);
+  var d2=new THREE.DirectionalLight(0x5DCAA5,0.5);d2.position.set(-5,3,-5);S.add(d2);
+  var d3=new THREE.DirectionalLight(0xF0997B,0.3);d3.position.set(5,-2,8);S.add(d3);
+
+  var grid=new THREE.GridHelper(40,50,0x1a1a2e,0x111120);grid.position.y=-0.01;S.add(grid);
+  var geo=new THREE.BufferGeometry();
+  var pts=new Float32Array(3000);
+  for(var i=0;i<1000;i++){pts[i*3]=(Math.random()-.5)*80;pts[i*3+1]=(Math.random()-.5)*30+10;pts[i*3+2]=(Math.random()-.5)*80;}
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(pts,3));
+  S.add(new THREE.Points(geo,new THREE.PointsMaterial({color:0x334466,size:0.05,sizeAttenuation:true})));
+
+  BG=new THREE.Group();S.add(BG);
+  FG=new THREE.Group();S.add(FG);
+
+  xrBuildBoids();
+  xrBuildPanel();
+  xrInitEvents();
+  xrCheckSupport();
+  document.getElementById('xr-msg').textContent='Ready. Open in Quest 3 browser and tap Enter XR.';
+}
+
+// ── boids ──────────────────────────────────────────────────────────────────
+function Boid(spin){
+  var r=2+Math.random()*5,a=Math.random()*Math.PI*2;
+  this.pos=new THREE.Vector3(Math.cos(a)*r,1.2+Math.random()*1.5,Math.sin(a)*r);
+  var sp=0.3+Math.random()*.4,va=Math.random()*Math.PI*2;
+  this.vel=new THREE.Vector3(Math.cos(va)*sp,0,Math.sin(va)*sp);
+  this.spin=!!spin; this.trail=[];
+  var col=spin?0xEF9F27:0xAFA9EC;
+  var g=new THREE.ConeGeometry(0.065,0.24,6);g.rotateX(Math.PI/2);
+  this.mesh=new THREE.Mesh(g,new THREE.MeshPhongMaterial({color:col,emissive:col,emissiveIntensity:0.3}));
+  BG.add(this.mesh);
+  var tg=new THREE.BufferGeometry();
+  var tp=new Float32Array(14*3);
+  tg.setAttribute('position',new THREE.BufferAttribute(tp,3).setUsage(35048));
+  this.tl=new THREE.Line(tg,new THREE.LineBasicMaterial({color:col,transparent:true,opacity:0.18}));
+  BG.add(this.tl);
+}
+Boid.prototype.update=function(pp,dt){
+  var nr=P.neighR,mv=P.maxV*0.28;
+  var cx=0,cy=0,cz=0,sx=0,sy=0,sz=0,ax=0,ay=0,az=0,n=0;
+  var all=BOIDS.concat([{pos:pp,vel:new THREE.Vector3()}]);
+  for(var i=0;i<all.length;i++){
+    var a=all[i];if(a===this)continue;
+    var d=this.pos.distanceTo(a.pos);
+    if(d<nr&&d>0){
+      cx+=a.pos.x;cy+=a.pos.y;cz+=a.pos.z;
+      ax+=a.vel.x||0;ay+=a.vel.y||0;az+=a.vel.z||0;n++;
+      if(d<0.8){sx-=(a.pos.x-this.pos.x)/d;sy-=(a.pos.y-this.pos.y)/d;sz-=(a.pos.z-this.pos.z)/d;}
+    }
+  }
+  if(n>0){
+    this.vel.x+=((cx/n)-this.pos.x)*P.coh*.5+sx*P.sep*.03+(ax/n-this.vel.x)*P.ali;
+    this.vel.y+=((cy/n)-this.pos.y)*P.coh*.25+sy*P.sep*.02+(ay/n-this.vel.y)*P.ali*.5;
+    this.vel.z+=((cz/n)-this.pos.z)*P.coh*.5+sz*P.sep*.03+(az/n-this.vel.z)*P.ali;
+  }
+  var dx=this.pos.x-pp.x,dz=this.pos.z-pp.z,dist=Math.sqrt(dx*dx+dz*dz)||.01;
+  if(dist<P.spinR){var dc=Math.exp(-dist/P.spinDecay);this.vel.x+=(-dz/dist)*P.spinStr*dc*.04;this.vel.z+=(dx/dist)*P.spinStr*dc*.04;}
+  this.vel.y+=(1.5-this.pos.y)*.005;
+  var sp=this.vel.length()||.001;
+  if(sp>mv)this.vel.multiplyScalar(mv/sp);
+  if(sp<.05)this.vel.multiplyScalar(.05/sp);
+  this.trail.push(this.pos.clone());
+  if(this.trail.length>14)this.trail.shift();
+  this.pos.addScaledVector(this.vel,dt*60);
+  var B=11;
+  if(this.pos.x<-B)this.vel.x+=.1;if(this.pos.x>B)this.vel.x-=.1;
+  if(this.pos.z<-B)this.vel.z+=.1;if(this.pos.z>B)this.vel.z-=.1;
+  if(this.pos.y<.3)this.vel.y+=.15;if(this.pos.y>4.5)this.vel.y-=.08;
+  this.mesh.position.copy(this.pos);
+  this.mesh.lookAt(this.pos.clone().add(this.vel));
+  var tp=this.tl.geometry.attributes.position;
+  for(var k=0;k<Math.min(this.trail.length,14);k++)tp.setXYZ(k,this.trail[k].x,this.trail[k].y,this.trail[k].z);
+  tp.needsUpdate=true;this.tl.geometry.setDrawRange(0,this.trail.length);
+};
+
+function xrBuildBoids(){
+  BG.clear();BOIDS=[];
+  for(var i=0;i<P.boidN;i++)BOIDS.push(new Boid(i<2));
+  var el=document.getElementById('xs-b');if(el)el.textContent=BOIDS.length;
+}
+
+// ── field ──────────────────────────────────────────────────────────────────
+function rF(px,pz,pp){
+  var cs=P.chargeStr,cd=P.chargeDecay,ss=P.spinStr,sr=P.spinR,sd=P.spinDecay;
+  var fx=0,fz=0;
+  for(var i=0;i<BOIDS.length;i++){
+    var b=BOIDS[i],dx=px-b.pos.x,dz2=pz-b.pos.z,d=Math.sqrt(dx*dx+dz2*dz2)||.1;
+    var m=cs/(1+Math.pow(d/cd,2));fx+=dx/d*m;fz+=dz2/d*m;
+  }
+  var dx2=px-pp.x,dz3=pz-pp.z,d2=Math.sqrt(dx2*dx2+dz3*dz3)||.1;
+  var dc=Math.exp(-d2/sd);
+  if(d2<sr){fx+=(-dz3/d2)*ss*dc;fz+=(dx2/d2)*ss*dc;}
+  fx+=dx2/d2*cs*1.2/(1+Math.pow(d2/cd,2));fz+=dz3/d2*cs*1.2/(1+Math.pow(d2/cd,2));
+  var m2=Math.sqrt(fx*fx+fz*fz)||.001;
+  return{fx:fx/m2,fz:fz/m2,mag:m2};
+}
+
+function xrUpdateField(pp){
+  while(FG.children.length)FG.remove(FG.children[0]);
+  if(!P.showField)return;
+  var nR=8,nS=55,sL=0.38;
+  var srcs=BOIDS.concat([{pos:pp,spin:false,isP:true}]);
+  for(var si=0;si<srcs.length;si++){
+    var src=srcs[si];
+    var col=src.spin?new THREE.Color(0xEF9F27):src.isP?new THREE.Color(0x5DCAA5):new THREE.Color(0xAFA9EC);
+    for(var ri=0;ri<nR;ri++){
+      var ang=ri/nR*Math.PI*2;
+      var cx=src.pos.x+Math.cos(ang)*.45,cz2=src.pos.z+Math.sin(ang)*.45,cy=src.pos.y+(Math.random()-.5)*.25;
+      var vA=[];
+      for(var s=0;s<nS;s++){
+        if(Math.abs(cx)>13||Math.abs(cz2)>13)break;
+        var f=rF(cx,cz2,pp);vA.push(cx,cy,cz2);
+        cx+=f.fx*sL;cz2+=f.fz*sL;
+        cy+=(f.fx*cz2-f.fz*cx)*.009+Math.sin(s*.4)*f.mag*.005;
+        cy=cl(cy,.1,4.5);
+      }
+      if(vA.length<9)continue;
+      var gg=new THREE.BufferGeometry();
+      gg.setAttribute('position',new THREE.Float32BufferAttribute(vA,3));
+      var cols=new Float32Array(vA.length),np=vA.length/3;
+      for(var pi=0;pi<np;pi++){var t=pi/np;var c2=col.clone().lerp(new THREE.Color(0x223366),t*.7);cols[pi*3]=c2.r;cols[pi*3+1]=c2.g;cols[pi*3+2]=c2.b;}
+      gg.setAttribute('color',new THREE.Float32BufferAttribute(cols,3));
+      FG.add(new THREE.Line(gg,new THREE.LineBasicMaterial({vertexColors:true,transparent:true,opacity:P.fieldOp*.65})));
+    }
+  }
+}
+
+// ── panel ──────────────────────────────────────────────────────────────────
+function xrBuildPanel(){
+  var cv=document.createElement('canvas');cv.width=PW;cv.height=PH;
+  PC=cv.getContext('2d');
+  PT=new THREE.CanvasTexture(cv);
+  PM=new THREE.Mesh(new THREE.PlaneGeometry(1.65,.96),new THREE.MeshBasicMaterial({map:PT,transparent:true,opacity:.96,side:THREE.DoubleSide}));
+  var fr=new THREE.Mesh(new THREE.PlaneGeometry(1.68,.99),new THREE.MeshBasicMaterial({color:0x0d1a18,transparent:true,opacity:.75,side:THREE.DoubleSide}));
+  fr.position.z=-.002;
+  PG=new THREE.Group();PG.add(fr);PG.add(PM);
+  PG.position.set(.8,1.55,-1.6);PG.rotation.y=-.22;
+  S.add(PG);xrDrawPanel();
+}
+
+function xrDrawPanel(){
+  var ctx=PC,W=PW,H=PH;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='rgba(8,8,14,0.97)';ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#0f0f18';ctx.fillRect(0,0,W,52);
+  ctx.strokeStyle='#1e1e2a';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,52);ctx.lineTo(W,52);ctx.stroke();
+  ctx.fillStyle='#d8d8d8';ctx.font='500 20px sans-serif';ctx.fillText('Spatial Toolkit — Agent Field',22,32);
+  ctx.fillStyle='#5DCAA5';ctx.beginPath();ctx.arc(W-28,26,5,0,Math.PI*2);ctx.fill();
+
+  var pp=CAM.position,e=0;
+  for(var i=0;i<6;i++)for(var j=0;j<6;j++)e+=rF(-8+i*3.2,-8+j*3.2,pp).mag;
+  e=(e/36).toFixed(2);
+  var cards=[{l:'Boids',v:BOIDS.length,c:'#AFA9EC'},{l:'Field E',v:e,c:'#EF9F27'},{l:'Spin R',v:P.spinR.toFixed(1)+'m',c:'#5DCAA5'},{l:'Max vel',v:P.maxV.toFixed(1),c:'#F0997B'}];
+  cards.forEach(function(s,i){
+    var x=22+i*((W-44)/4),y=62,bw=(W-44)/4-10,bh=66;
+    ctx.fillStyle='#0f0f1a';ctx.beginPath();ctx.roundRect(x,y,bw,bh,4);ctx.fill();
+    ctx.strokeStyle='#1e1e2a';ctx.lineWidth=1;ctx.beginPath();ctx.roundRect(x,y,bw,bh,4);ctx.stroke();
+    ctx.fillStyle='#444';ctx.font='10px sans-serif';ctx.fillText(s.l.toUpperCase(),x+10,y+18);
+    ctx.fillStyle=s.c;ctx.font='500 24px sans-serif';ctx.fillText(s.v,x+10,y+52);
+  });
+
+  _SL=[];
+  var slDefs=[
+    {l:'Boid count',p:'boidN',min:1,max:20,st:1},
+    {l:'Neighbour radius',p:'neighR',min:.5,max:10,st:.5},
+    {l:'Spin strength',p:'spinStr',min:.5,max:20,st:.5},
+    {l:'Spin radius (m)',p:'spinR',min:.5,max:12,st:.1},
+    {l:'Cohesion',p:'coh',min:.001,max:.05,st:.001},
+    {l:'Max velocity',p:'maxV',min:.5,max:8,st:.1},
+    {l:'Field opacity',p:'fieldOp',min:.1,max:1,st:.05},
+    {l:'Charge strength',p:'chargeStr',min:.5,max:15,st:.5},
+  ];
+  var SX=22,SY=140,SW=W/2-36,SH=H-200;
+  ctx.fillStyle='#0a0a10';ctx.beginPath();ctx.roundRect(SX,SY,SW,SH,5);ctx.fill();
+  ctx.strokeStyle='#1a1a22';ctx.lineWidth=1;ctx.beginPath();ctx.roundRect(SX,SY,SW,SH,5);ctx.stroke();
+  ctx.fillStyle='#2a2a3a';ctx.font='10px sans-serif';ctx.fillText('PARAMETERS',SX+14,SY+17);
+  slDefs.forEach(function(sl,i){
+    var y=SY+28+i*50,x=SX+14,bw=SW-30,val=P[sl.p];
+    var t=cl((val-sl.min)/(sl.max-sl.min),0,1);
+    var dv=sl.st>=1?Math.round(val):val.toFixed(sl.st<.01?3:sl.st<.1?2:1);
+    ctx.fillStyle='#555';ctx.font='11px sans-serif';ctx.fillText(sl.l,x,y+13);
+    ctx.fillStyle='#c8c8c8';ctx.font='500 11px sans-serif';ctx.fillText(dv,x+bw-30,y+13);
+    ctx.fillStyle='#1e1e2a';ctx.beginPath();ctx.roundRect(x,y+18,bw,5,3);ctx.fill();
+    ctx.fillStyle='#5DCAA5';ctx.beginPath();ctx.roundRect(x,y+18,bw*t,5,3);ctx.fill();
+    ctx.fillStyle='#5DCAA5';ctx.beginPath();ctx.arc(x+bw*t,y+20,7,0,Math.PI*2);ctx.fill();
+    _SL.push({x:x,y:y+14,bw:bw,p:sl.p,min:sl.min,max:sl.max,st:sl.st});
+  });
+
+  var MX=W/2+8,MY=SY,MW=W/2-28,MH=SH;
+  ctx.fillStyle='#0a0a10';ctx.beginPath();ctx.roundRect(MX,MY,MW,MH,5);ctx.fill();
+  ctx.strokeStyle='#1a1a22';ctx.lineWidth=1;ctx.beginPath();ctx.roundRect(MX,MY,MW,MH,5);ctx.stroke();
+  ctx.fillStyle='#2a2a3a';ctx.font='10px sans-serif';ctx.fillText('FIELD MAP (TOP VIEW)',MX+14,MY+17);
+  var res=16,eMin=1e9,eMax=-1e9,grid=[];
+  for(var jj=0;jj<=res;jj++)for(var ii=0;ii<=res;ii++){var pxx=-11+ii/res*22,pzz=-11+jj/res*22,ff=rF(pxx,pzz,pp);grid.push(ff);if(ff.mag<eMin)eMin=ff.mag;if(ff.mag>eMax)eMax=ff.mag;}
+  var er=(eMax-eMin)||1,cw2=(MW-28)/res,ch2=(MH-40)/res;
+  for(var jj2=0;jj2<res;jj2++)for(var ii2=0;ii2<res;ii2++){
+    var ff2=grid[jj2*(res+1)+ii2],tt=(ff2.mag-eMin)/er;
+    ctx.fillStyle='rgba('+Math.round(lr(20,93,tt))+','+Math.round(lr(35,202,tt*.8))+','+Math.round(lr(60,165,tt*.6))+','+(0.25+tt*.55)+')';
+    ctx.fillRect(MX+14+ii2*cw2,MY+26+jj2*ch2,cw2+1,ch2+1);
+  }
+  for(var bi=0;bi<BOIDS.length;bi++){
+    var bbx=MX+14+(BOIDS[bi].pos.x+11)/22*(MW-28),bbz=MY+26+(BOIDS[bi].pos.z+11)/22*(MH-40);
+    ctx.fillStyle=BOIDS[bi].spin?'#EF9F27':'#AFA9EC';ctx.beginPath();ctx.arc(bbx,bbz,4,0,Math.PI*2);ctx.fill();
+  }
+  var ppx2=MX+14+(pp.x+11)/22*(MW-28),ppz2=MY+26+(pp.z+11)/22*(MH-40);
+  ctx.fillStyle='#5DCAA5';ctx.beginPath();ctx.arc(ppx2,ppz2,8,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='rgba(93,202,165,.35)';ctx.lineWidth=1;ctx.beginPath();ctx.arc(ppx2,ppz2,P.spinR/22*(MW-28),0,Math.PI*2);ctx.stroke();
+
+  var LY=H-52;ctx.fillStyle='#0f0f18';ctx.fillRect(0,LY,W,52);
+  ctx.strokeStyle='#1e1e2a';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,LY);ctx.lineTo(W,LY);ctx.stroke();
+  var ctrls=[['Left stick','Move'],['Right trigger','Grab panel'],['Left squeeze','Reset boids'],['Right squeeze','Toggle field'],['WASD / drag','Desktop mode']];
+  ctrls.forEach(function(c,i){var x=22+i*(W/5);ctx.fillStyle='#555';ctx.font='500 10px sans-serif';ctx.fillText(c[0],x,LY+18);ctx.fillStyle='#333';ctx.font='10px sans-serif';ctx.fillText(c[1],x,LY+36);});
+  PT.needsUpdate=true;
+}
+
+// ── controllers ────────────────────────────────────────────────────────────
+function xrBuildControllers(){
+  CTRLS=[];
+  for(var i=0;i<2;i++){
+    var ctrl=R.xr.getController(i);S.add(ctrl);
+    var rg=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0),new THREE.Vector3(0,0,-3.5)]);
+    ctrl.add(new THREE.Line(rg,new THREE.LineBasicMaterial({color:i===0?0x5DCAA5:0xF0997B,transparent:true,opacity:.45})));
+    ctrl.add(new THREE.Mesh(new THREE.SphereGeometry(.022,8,8),new THREE.MeshBasicMaterial({color:i===0?0x5DCAA5:0xF0997B})));
+    CTRLS.push(ctrl);
+    (function(idx){
+      ctrl.addEventListener('selectstart',function(){
+        if(idx===1&&CTRLS[1]&&CTRLS[1].position.distanceTo(PG.position)<1.8){GRAB=true;GRABCTRL=CTRLS[1];}
+      });
+      ctrl.addEventListener('selectend',function(){if(idx===1)GRAB=false;});
+      ctrl.addEventListener('squeezestart',function(){
+        if(idx===0)xrBuildBoids();
+        if(idx===1)P.showField=!P.showField;
+      });
+    })(i);
+  }
+}
+
+function xrPanelGrab(){
+  if(!GRAB||!GRABCTRL)return;
+  PG.position.copy(GRABCTRL.position).add(new THREE.Vector3(0,-.05,-.28).applyQuaternion(GRABCTRL.quaternion));
+  PG.quaternion.copy(GRABCTRL.quaternion);
+}
+
+function xrPanelRay(){
+  if(!CTRLS[1])return;
+  var ctrl=CTRLS[1],ray=new THREE.Raycaster();
+  ray.set(ctrl.position,new THREE.Vector3(0,0,-1).applyQuaternion(ctrl.quaternion));
+  var hits=ray.intersectObject(PM);
+  if(hits.length&&hits[0].distance<3&&hits[0].uv)xrPanelTap(hits[0].uv.x*PW,(1-hits[0].uv.y)*PH);
+}
+
+var _lt2=0;
+function xrPanelTap(px,py){
+  var now=Date.now();if(now-_lt2<130)return;_lt2=now;
+  for(var i=0;i<_SL.length;i++){
+    var sl=_SL[i];
+    if(py>sl.y&&py<sl.y+24&&px>sl.x&&px<sl.x+sl.bw){
+      var t=cl((px-sl.x)/sl.bw,0,1);
+      P[sl.p]=sl.min+(sl.max-sl.min)*t;
+      if(sl.p==='boidN'){P.boidN=Math.round(P.boidN);xrBuildBoids();}
+    }
+  }
+}
+
+// ── events ─────────────────────────────────────────────────────────────────
+function xrInitEvents(){
+  window.addEventListener('resize',function(){
+    var root=document.getElementById('xr-root');
+    var w=root.offsetWidth||window.innerWidth,h=root.offsetHeight||window.innerHeight;
+    R.setSize(w,h);CAM.aspect=w/h;CAM.updateProjectionMatrix();
+  });
+  window.addEventListener('keydown',function(e){KEYS[e.key]=true;});
+  window.addEventListener('keyup',function(e){KEYS[e.key]=false;});
+  var c=document.getElementById('xr-canvas');
+  c.addEventListener('mousedown',function(e){DRAG=true;PMX=e.clientX;PMY=e.clientY;});
+  window.addEventListener('mouseup',function(){DRAG=false;});
+  window.addEventListener('mousemove',function(e){if(!DRAG)return;MVX=(e.clientX-PMX)*.003;MVY=(e.clientY-PMY)*.003;PMX=e.clientX;PMY=e.clientY;});
+  c.addEventListener('wheel',function(e){CAM.position.z=cl(CAM.position.z+e.deltaY*.01,-5,12);});
+  c.addEventListener('click',function(e){
+    if(XRS)return;
+    var ray=new THREE.Raycaster();
+    var ndc=new THREE.Vector2((e.clientX/window.innerWidth)*2-1,-(e.clientY/window.innerHeight)*2+1);
+    ray.setFromCamera(ndc,CAM);
+    var hits=ray.intersectObject(PM);
+    if(hits.length&&hits[0].uv)xrPanelTap(hits[0].uv.x*PW,(1-hits[0].uv.y)*PH);
+  });
+}
+
+// ── xr support check ───────────────────────────────────────────────────────
+function xrCheckSupport(){
+  var msg=document.getElementById('xr-msg'),btn=document.getElementById('xr-btn');
+  if(!navigator.xr){msg.textContent='WebXR not available in this browser.';if(btn)btn.disabled=true;return;}
+  navigator.xr.isSessionSupported('immersive-ar').then(function(ok){
+    if(ok){msg.textContent='Passthrough AR supported — Quest 3 ready!';}
+    else return navigator.xr.isSessionSupported('immersive-vr').then(function(ok2){
+      msg.textContent=ok2?'VR mode supported.':'XR not supported on this device.';
+      if(!ok2&&btn)btn.disabled=true;
+    });
+  }).catch(function(e){msg.textContent='Check error: '+e.message;});
+  document.getElementById('xr-float').style.display='block';
+}
+
+// ── enter xr ───────────────────────────────────────────────────────────────
+async function xrEnter(){
+  var msg=document.getElementById('xr-msg');
+  var log=function(t){msg.textContent=t;console.log('[XR]',t);};
+
+  if(!navigator.xr){log('navigator.xr is undefined — browser does not expose WebXR.');return;}
+
+  // Check what modes are actually supported before trying
+  var arOk=false,vrOk=false;
+  try{arOk=await navigator.xr.isSessionSupported('immersive-ar');}catch(e){log('AR support check failed: '+e.message);return;}
+  try{vrOk=await navigator.xr.isSessionSupported('immersive-vr');}catch(e){}
+  log('AR:'+arOk+' VR:'+vrOk+' — attempting session…');
+
+  var modes=[];
+  if(arOk){
+    modes.push(['immersive-ar',{optionalFeatures:['local-floor','bounded-floor','hand-tracking']}]);
+    modes.push(['immersive-ar',{optionalFeatures:['local']}]);
+    modes.push(['immersive-ar',{}]);
+  }
+  if(vrOk){
+    modes.push(['immersive-vr',{optionalFeatures:['local-floor','bounded-floor','hand-tracking']}]);
+    modes.push(['immersive-vr',{optionalFeatures:['local']}]);
+    modes.push(['immersive-vr',{}]);
+  }
+  if(!modes.length){log('Neither immersive-ar nor immersive-vr supported. Error: device or page context blocks XR.\nIs the page on HTTPS? Is it inside an iframe without allow="xr-spatial-tracking"?');return;}
+
+  var session=null,lastErr='';
+  for(var i=0;i<modes.length;i++){
+    try{
+      log('Trying '+modes[i][0]+' ('+JSON.stringify(modes[i][1])+')…');
+      session=await navigator.xr.requestSession(modes[i][0],modes[i][1]);
+      log('Session OK: '+modes[i][0]);
+      break;
+    }catch(e){lastErr=modes[i][0]+': '+e.message;console.warn('[XR] attempt',i,'failed:',e.message);}
+  }
+  if(!session){log('All attempts failed. Last error — '+lastErr);return;}
+
+  XRS=session;
+  var refType='local';
+  try{if((session.enabledFeatures||[]).indexOf('local-floor')>-1)refType='local-floor';}catch(e){}
+  R.xr.setReferenceSpaceType(refType);
+  await R.xr.setSession(session);
+  xrBuildControllers();
+  document.getElementById('xr-overlay').style.display='none';
+  document.getElementById('xr-stats').style.display='flex';
+  document.getElementById('xr-float').querySelector('button').textContent='Exit XR';
+  session.addEventListener('end',function(){
+    XRS=null;
+    document.getElementById('xr-overlay').style.display='flex';
+    document.getElementById('xr-stats').style.display='none';
+    document.getElementById('xr-float').querySelector('button').textContent='↗ Enter XR';
+  });
+  R.setAnimationLoop(xrLoop);
+}
+
+function xrDesktop(){
+  document.getElementById('xr-overlay').style.display='none';
+  document.getElementById('xr-stats').style.display='flex';
+  R.setAnimationLoop(xrDesktopLoop);
+}
+
+// ── input ───────────────────────────────────────────────────────────────────
+function xrGamepad(){
+  var sess=R.xr.getSession();if(!sess)return;
+  for(var src of sess.inputSources){
+    if(!src.gamepad)continue;
+    var ax=src.gamepad.axes,bt=src.gamepad.buttons;
+    if(src.handedness==='left'&&ax.length>=4){
+      var fwd=new THREE.Vector3(0,0,-1).applyQuaternion(CAM.quaternion);fwd.y=0;fwd.normalize();
+      var rgt=new THREE.Vector3(1,0,0).applyQuaternion(CAM.quaternion);rgt.y=0;rgt.normalize();
+      CAM.position.addScaledVector(fwd,-ax[3]*.05);CAM.position.addScaledVector(rgt,ax[2]*.05);
+    }
+    if(src.handedness==='right'&&bt.length>5){
+      if(bt[4]&&bt[4].pressed)xrBuildBoids();
+      if(bt[5]&&bt[5].pressed)P.showField=!P.showField;
+    }
+  }
+}
+
+function xrDesktopInput(dt){
+  var sp=4*dt;
+  var fwd=new THREE.Vector3(0,0,-1).applyQuaternion(CAM.quaternion);fwd.y=0;fwd.normalize();
+  var rgt=new THREE.Vector3(1,0,0).applyQuaternion(CAM.quaternion);rgt.y=0;rgt.normalize();
+  if(KEYS['w']||KEYS['W']||KEYS['ArrowUp'])CAM.position.addScaledVector(fwd,sp);
+  if(KEYS['s']||KEYS['S']||KEYS['ArrowDown'])CAM.position.addScaledVector(fwd,-sp);
+  if(KEYS['a']||KEYS['A']||KEYS['ArrowLeft'])CAM.position.addScaledVector(rgt,-sp);
+  if(KEYS['d']||KEYS['D']||KEYS['ArrowRight'])CAM.position.addScaledVector(rgt,sp);
+  if(KEYS[' '])CAM.position.y=cl(CAM.position.y+sp*.5,.5,5);
+  if(KEYS['Shift'])CAM.position.y=cl(CAM.position.y-sp*.5,.5,5);
+  if(DRAG){YAW-=MVX;PITCH=cl(PITCH-MVY,-1.2,1.2);}
+  MVX*=.7;MVY*=.7;
+  CAM.quaternion.setFromEuler(new THREE.Euler(PITCH,YAW,0,'YXZ'));
+}
+
+// ── core update ─────────────────────────────────────────────────────────────
+function xrCoreUpdate(dt){
+  var pp=CAM.position;
+  for(var i=0;i<BOIDS.length;i++)BOIDS[i].update(pp,dt);
+  TICK++;
+  if(TICK%3===0)xrUpdateField(pp);
+  xrPanelGrab();
+  if(TICK%5===0)xrDrawPanel();
+  if(TICK%12===0){
+    var e=0;for(var ii=0;ii<6;ii++)for(var jj=0;jj<6;jj++)e+=rF(-8+ii*3.2,-8+jj*3.2,pp).mag;
+    var es=document.getElementById('xs-e');if(es)es.textContent=(e/36).toFixed(2);
+    var fp=document.getElementById('xs-fps');if(fp)fp.textContent=FPS;
+    var xp=document.getElementById('xs-pos');if(xp)xp.textContent=pp.x.toFixed(1)+','+pp.y.toFixed(1)+','+pp.z.toFixed(1);
+  }
+}
+
+function xrDesktopLoop(t){
+  var dt=Math.min((t-LT)/1000,.05);LT=t;
+  FPS=Math.round(.9*FPS+.1*(1/Math.max(dt,.001)));
+  xrDesktopInput(dt);xrCoreUpdate(dt);R.render(S,CAM);
+}
+
+function xrLoop(t){
+  var dt=Math.min((t-LT)/1000,.05);LT=t;
+  FPS=Math.round(.9*FPS+.1*(1/Math.max(dt,.001)));
+  xrGamepad();xrCoreUpdate(dt);xrPanelRay();R.render(S,CAM);
+}
+</script>
+</body>
+</html>
