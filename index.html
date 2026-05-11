@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>ABST v5 — Quest 3</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'SF Mono',ui-monospace,monospace;background:#08080f;color:#c8c8d8;display:flex;height:100vh;overflow:hidden;font-size:12px}
+#sidebar{width:260px;min-width:260px;background:#0d0d16;border-right:1px solid #1a1a2e;overflow-y:auto;display:flex;flex-direction:column}
+#main{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative}
+#topbar{background:#0d0d16;border-bottom:1px solid #1a1a2e;padding:6px 12px;display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap}
+h1{font-size:9px;color:#2a2a4a;letter-spacing:.18em;text-transform:uppercase}
+.badge{font-size:7px;padding:2px 5px;border-radius:2px;border:1px solid;letter-spacing:.08em;text-transform:uppercase}
+.b-teal{color:#2a7a5a;border-color:#0F6E5630;background:#0F6E5608}
+.b-purple{color:#5a4a9a;border-color:#534AB730;background:#534AB708}
+.b-xr{color:#2a6a9a;border-color:#2a6a9a44;background:#2a6a9a08}
+#stageBar{display:flex;gap:2px;margin-left:auto}
+.stbtn{padding:3px 9px;border-radius:2px;border:1px solid #181828;background:transparent;color:#2a2a4a;font-size:8px;cursor:pointer;font-family:inherit;text-transform:uppercase;letter-spacing:.1em}
+.stbtn.active{background:#14142a;color:#8a8acc;border-color:#252550}
+#canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+#statsBar{background:#0d0d16;border-top:1px solid #1a1a2e;padding:4px 12px;display:flex;gap:12px;flex-shrink:0;flex-wrap:wrap}
+.st{display:flex;align-items:center;gap:4px}
+.st-dot{width:5px;height:5px;border-radius:50%}
+.st-lbl{font-size:7px;color:#1e1e32;text-transform:uppercase;letter-spacing:.1em}
+.st-val{font-size:9px;color:#6a6a8a;font-variant-numeric:tabular-nums}
+/* sidebar */
+#sidebar h2{font-size:7px;color:#1e1e32;text-transform:uppercase;letter-spacing:.18em;padding:8px 12px 6px;border-bottom:1px solid #10101a}
+.sec{padding:6px 12px;border-bottom:1px solid #0e0e18}
+.sec-hd{font-size:7px;color:#1e1e32;text-transform:uppercase;letter-spacing:.14em;margin-bottom:5px;display:flex;align-items:center;gap:4px}
+.si{width:10px;height:10px;border-radius:2px;display:flex;align-items:center;justify-content:center;font-size:6px}
+.pr{display:grid;grid-template-columns:1fr auto;gap:2px;margin-bottom:4px}
+.pn{font-size:9px;color:#4a4a6a}
+.pv{font-size:9px;color:#7a7a9a;text-align:right;min-width:32px;font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;height:1px;appearance:none;background:#181828;outline:none;cursor:pointer;margin:2px 0 1px;grid-column:1/-1}
+input[type=range]::-webkit-slider-thumb{appearance:none;width:8px;height:8px;border-radius:50%;background:#2a5a4a;cursor:pointer;border:1px solid #3a8a6a}
+.brow{display:flex;gap:4px;padding:5px 12px 8px}
+.btn{flex:1;padding:4px;border-radius:2px;border:1px solid #181828;background:#0d0d16;color:#2a2a4a;font-size:7px;cursor:pointer;font-family:inherit;text-transform:uppercase;letter-spacing:.1em}
+.btn.p{background:#081410;border-color:#142820;color:#2a7a5a}
+.btn.a{background:#140e08;border-color:#2a1e10;color:#7a5a18}
+.btn.xr{background:#08101a;border-color:#1a2a3a;color:#2a7aaa}
+.form-tabs{display:flex;gap:2px;margin-bottom:6px}
+.ftab{flex:1;padding:4px 2px;border-radius:2px;border:1px solid #181828;background:#0d0d16;color:#2a2a4a;font-size:6px;cursor:pointer;text-align:center;font-family:inherit;text-transform:uppercase}
+.ftab.vor.active{color:#2a7a5a;background:#08120e;border-color:#142818}
+.ftab.rhe.active{color:#5a4a9a;background:#0e0c20;border-color:#1e1840}
+.ftab.meta.active{color:#7a4a2a;background:#160e08;border-color:#2e1a10}
+.form-param-group{display:none}.form-param-group.visible{display:block}
+#xr-status{font-size:8px;color:#1a3a5a;padding:4px 12px;background:#060e14;border-bottom:1px solid #0e1e28;letter-spacing:.08em}
+#xr-status.ok{color:#2a7a9a}
+#xr-status.live{color:#4aaaff}
+#xr-status.err{color:#8a2a2a}
+</style>
+</head>
+<body>
+<!-- SIDEBAR -->
+<div id="sidebar">
+<h2>ABST v5 — Quest 3</h2>
+<div id="xr-status">Checking WebXR…</div>
+
+<div class="sec">
+<div class="sec-hd"><div class="si" style="background:#080e18;color:#2a6a9a">XR</div>VR / Hand Tracking</div>
+<div style="font-size:8px;color:#1a2a3a;line-height:1.7;margin-bottom:6px">Head pose → Human Agent 1<br>Gaze + velocity → Spin Force<br>Right pinch+drag → panel sliders<br>Left fist → recentre panel</div>
+<div class="brow" style="padding:0 0 6px">
+  <button class="btn xr" id="xrBtn" onclick="tryXR()">Enter VR</button>
+  <button class="btn" onclick="xrSession&&xrSession.end()">Exit VR</button>
+</div>
+</div>
+
+<div class="sec">
+<div class="sec-hd"><div class="si" style="background:#201408;color:#7a5a18">T</div>Temporal</div>
+<div class="pr"><div class="pn">Sim speed</div><span class="pv" id="v-spd">1.00</span><input type="range" min=".05" max="3" value="1" step=".05" id="spd" oninput="sv('spd','v-spd',2)"></div>
+<div class="pr"><div class="pn">Field update interval</div><span class="pv" id="v-fRate">18</span><input type="range" min="1" max="60" value="18" step="1" id="fRate" oninput="sv('fRate','v-fRate',0)"></div>
+<div class="pr"><div class="pn">Crystallise interval</div><span class="pv" id="v-cInt">10s</span><input type="range" min="60" max="3600" value="600" step="60" id="cInt" oninput="document.getElementById('v-cInt').textContent=Math.round(gv('cInt')/60)+'s'"></div>
+</div>
+
+<div class="sec">
+<div class="sec-hd"><div class="si" style="background:#081428;color:#2a5a8a">H</div>Human Agent 1 (head in VR)</div>
+<div class="pr"><div class="pn">Spin strength</div><span class="pv" id="v-spinStr">10</span><input type="range" min=".5" max="25" value="10" step=".5" id="spinStr" oninput="sv('spinStr','v-spinStr',0)"></div>
+<div class="pr"><div class="pn">Spin radius</div><span class="pv" id="v-spinR">80</span><input type="range" min="20" max="200" value="80" step="5" id="spinR" oninput="sv('spinR','v-spinR',0)"></div>
+<div class="pr"><div class="pn">Spin decay</div><span class="pv" id="v-spinDc">4</span><input type="range" min=".5" max="15" value="4" step=".5" id="spinDc" oninput="sv('spinDc','v-spinDc',1)"></div>
+<div class="pr"><div class="pn">Move speed</div><span class="pv" id="v-hspd">2</span><input type="range" min=".3" max="8" value="2" step=".1" id="hspd" oninput="sv('hspd','v-hspd',1)"></div>
+</div>
+
+<div class="sec">
+<div class="sec-hd"><div class="si" style="background:#0a1a18;color:#2a6a5a">FL</div>Flocking</div>
+<div class="pr"><div class="pn">Neighbour radius</div><span class="pv" id="v-nr">85</span><input type="range" min="15" max="220" value="85" step="5" id="nr" oninput="sv('nr','v-nr',0)"></div>
+<div class="pr"><div class="pn">Vertical freedom</div><span class="pv" id="v-zF">.60</span><input type="range" min=".05" max="2" value=".6" step=".05" id="zF" oninput="sv('zF','v-zF',2)"></div>
+<div class="pr"><div class="pn">Boundary strength</div><span class="pv" id="v-bStr">8</span><input type="range" min="1" max="20" value="8" step="1" id="bStr" oninput="sv('bStr','v-bStr',0)"></div>
+</div>
+
+<div class="sec" style="border-left:2px solid #1a244a">
+<div class="sec-hd"><div class="si" style="background:#0a1030;color:#4a5aaa">C</div>Charge</div>
+<div class="pr"><div class="pn">Count</div><span class="pv" id="v-cN">3</span><input type="range" min="0" max="12" value="3" step="1" id="cN" oninput="sv('cN','v-cN',0);reb()"></div>
+<div class="pr"><div class="pn">Max velocity</div><span class="pv" id="v-cMV">2</span><input type="range" min=".3" max="10" value="2" step=".1" id="cMV" oninput="sv('cMV','v-cMV',1)"></div>
+<div class="pr"><div class="pn">Cohesion</div><span class="pv" id="v-cCoh">.018</span><input type="range" min="0" max=".06" value=".018" step=".001" id="cCoh" oninput="sv('cCoh','v-cCoh',3)"></div>
+<div class="pr"><div class="pn">Separation</div><span class="pv" id="v-cSep">28</span><input type="range" min="0" max="80" value="28" step="1" id="cSep" oninput="sv('cSep','v-cSep',0)"></div>
+<div class="pr"><div class="pn">Field strength</div><span class="pv" id="v-cStr">9</span><input type="range" min=".5" max="25" value="9" step=".5" id="cStr" oninput="sv('cStr','v-cStr',0)"></div>
+<div class="pr"><div class="pn">Field decay</div><span class="pv" id="v-cDc">9</span><input type="range" min="1" max="28" value="9" step=".5" id="cDc" oninput="sv('cDc','v-cDc',0)"></div>
+</div>
+
+<div class="sec" style="border-left:2px solid #3a2808">
+<div class="sec-hd"><div class="si" style="background:#201008;color:#8a5a18">P</div>Pulse</div>
+<div class="pr"><div class="pn">Count</div><span class="pv" id="v-pN">2</span><input type="range" min="0" max="8" value="2" step="1" id="pN" oninput="sv('pN','v-pN',0);reb()"></div>
+<div class="pr"><div class="pn">Max velocity</div><span class="pv" id="v-pMV">1.8</span><input type="range" min=".3" max="10" value="1.8" step=".1" id="pMV" oninput="sv('pMV','v-pMV',1)"></div>
+<div class="pr"><div class="pn">Cohesion</div><span class="pv" id="v-pCoh">.012</span><input type="range" min="0" max=".06" value=".012" step=".001" id="pCoh" oninput="sv('pCoh','v-pCoh',3)"></div>
+<div class="pr"><div class="pn">Separation</div><span class="pv" id="v-pSep">35</span><input type="range" min="0" max="80" value="35" step="1" id="pSep" oninput="sv('pSep','v-pSep',0)"></div>
+<div class="pr"><div class="pn">Base strength</div><span class="pv" id="v-pStr">8</span><input type="range" min=".5" max="25" value="8" step=".5" id="pStr" oninput="sv('pStr','v-pStr',0)"></div>
+<div class="pr"><div class="pn">Amplitude</div><span class="pv" id="v-pAmp">1</span><input type="range" min="0" max="1.5" value="1" step=".05" id="pAmp" oninput="sv('pAmp','v-pAmp',2)"></div>
+<div class="pr"><div class="pn">Rate</div><span class="pv" id="v-pRate">.012</span><input type="range" min=".001" max=".08" value=".012" step=".001" id="pRate" oninput="sv('pRate','v-pRate',3)"></div>
+<div class="pr"><div class="pn">Field decay</div><span class="pv" id="v-pDc">9</span><input type="range" min="1" max="28" value="9" step=".5" id="pDc" oninput="sv('pDc','v-pDc',0)"></div>
+</div>
+
+<div class="sec" style="border-left:2px solid #083a18">
+<div class="sec-hd"><div class="si" style="background:#081808;color:#2a8a4a">TR</div>Trail</div>
+<div class="pr"><div class="pn">Count</div><span class="pv" id="v-tN">1</span><input type="range" min="0" max="6" value="1" step="1" id="tN" oninput="sv('tN','v-tN',0);reb()"></div>
+<div class="pr"><div class="pn">Max velocity</div><span class="pv" id="v-tMV">2.2</span><input type="range" min=".3" max="10" value="2.2" step=".1" id="tMV" oninput="sv('tMV','v-tMV',1)"></div>
+<div class="pr"><div class="pn">Field strength</div><span class="pv" id="v-tFStr">6</span><input type="range" min=".5" max="20" value="6" step=".5" id="tFStr" oninput="sv('tFStr','v-tFStr',0)"></div>
+<div class="pr"><div class="pn">Deposit strength</div><span class="pv" id="v-tDStr">4</span><input type="range" min=".5" max="12" value="4" step=".5" id="tDStr" oninput="sv('tDStr','v-tDStr',1)"></div>
+<div class="pr"><div class="pn">Deposit interval</div><span class="pv" id="v-tInt">2.5</span><input type="range" min=".5" max="10" value="2.5" step=".5" id="tInt" oninput="sv('tInt','v-tInt',1)"></div>
+<div class="pr"><div class="pn">Evaporation</div><span class="pv" id="v-tEvap">.012</span><input type="range" min=".001" max=".08" value=".012" step=".001" id="tEvap" oninput="sv('tEvap','v-tEvap',3)"></div>
+</div>
+
+<div class="sec" style="border-left:2px solid #3a0808">
+<div class="sec-hd"><div class="si" style="background:#200808;color:#8a2a1a">AT</div>Attractor</div>
+<div class="pr"><div class="pn">Count</div><span class="pv" id="v-aN">1</span><input type="range" min="0" max="4" value="1" step="1" id="aN" oninput="sv('aN','v-aN',0);reb()"></div>
+<div class="pr"><div class="pn">Max velocity</div><span class="pv" id="v-aMV">.8</span><input type="range" min=".1" max="5" value=".8" step=".1" id="aMV" oninput="sv('aMV','v-aMV',1)"></div>
+<div class="pr"><div class="pn">Field strength</div><span class="pv" id="v-aStr">9</span><input type="range" min=".5" max="25" value="9" step=".5" id="aStr" oninput="sv('aStr','v-aStr',0)"></div>
+<div class="pr"><div class="pn">Multiplier</div><span class="pv" id="v-aMult">4</span><input type="range" min="1.5" max="10" value="4" step=".5" id="aMult" oninput="sv('aMult','v-aMult',1)"></div>
+<div class="pr"><div class="pn">Vortex</div><span class="pv" id="v-aVx">.22</span><input type="range" min="0" max=".8" value=".22" step=".02" id="aVx" oninput="sv('aVx','v-aVx',2)"></div>
+</div>
+
+<div class="sec">
+<div class="sec-hd"><div class="si" style="background:#101010;color:#4a4a4a">RF</div>Field display</div>
+<div class="pr"><div class="pn">Trail field decay</div><span class="pv" id="v-trDc">9</span><input type="range" min="1" max="28" value="9" step=".5" id="trDc" oninput="sv('trDc','v-trDc',0)"></div>
+<div class="pr"><div class="pn">Field opacity</div><span class="pv" id="v-fOp">.72</span><input type="range" min=".1" max="1" value=".72" step=".01" id="fOp" oninput="sv('fOp','v-fOp',2)"></div>
+</div>
+
+<div class="sec">
+<div class="sec-hd"><div class="si" style="background:#080e18;color:#2a4a7a">3</div>Stage 3 form mode</div>
+<div class="form-tabs">
+<button class="ftab vor active" onclick="setFM('massing',this)">Field Massing</button>
+<button class="ftab rhe" onclick="setFM('rheotomic',this)">Rheotomic</button>
+<button class="ftab meta" onclick="setFM('metaball',this)">Metaball</button>
+</div>
+<div class="form-param-group visible" id="fpg-massing">
+<div class="pr"><div class="pn">Grid size</div><span class="pv" id="v-caR">18</span><input type="range" min="6" max="28" value="18" step="2" id="caR" oninput="sv('caR','v-caR',0)"></div>
+<div class="pr"><div class="pn">CA steps</div><span class="pv" id="v-caS">4</span><input type="range" min="1" max="20" value="4" step="1" id="caS" oninput="sv('caS','v-caS',0)"></div>
+<div class="pr"><div class="pn">Field threshold</div><span class="pv" id="v-caT">.36</span><input type="range" min=".05" max=".95" value=".36" step=".01" id="caT" oninput="sv('caT','v-caT',2)"></div>
+<div class="pr"><div class="pn">Agent boost</div><span class="pv" id="v-caAB">1.5</span><input type="range" min="0" max="5" value="1.5" step=".1" id="caAB" oninput="sv('caAB','v-caAB',1)"></div>
+<div class="pr"><div class="pn">Layers</div><span class="pv" id="v-caL">4</span><input type="range" min="1" max="8" value="4" step="1" id="caL" oninput="sv('caL','v-caL',0)"></div>
+<div class="pr"><div class="pn">Layer height</div><span class="pv" id="v-caLH">1.2</span><input type="range" min=".3" max="3" value="1.2" step=".1" id="caLH" oninput="sv('caLH','v-caLH',1)"></div>
+</div>
+<div class="form-param-group" id="fpg-rheotomic">
+<div class="pr"><div class="pn">Surface scale</div><span class="pv" id="v-rSc">1</span><input type="range" min=".3" max="2.5" value="1" step=".05" id="rSc" oninput="sv('rSc','v-rSc',2)"></div>
+<div class="pr"><div class="pn">Iso contours</div><span class="pv" id="v-rD">10</span><input type="range" min="3" max="28" value="10" step="1" id="rD" oninput="sv('rD','v-rD',0)"></div>
+<div class="pr"><div class="pn">Grid resolution</div><span class="pv" id="v-rSt">40</span><input type="range" min="20" max="80" value="40" step="5" id="rSt" oninput="sv('rSt','v-rSt',0)"></div>
+<div class="pr"><div class="pn">Surface height</div><span class="pv" id="v-rZ">2.2</span><input type="range" min=".2" max="5" value="2.2" step=".1" id="rZ" oninput="sv('rZ','v-rZ',1)"></div>
+</div>
+<div class="form-param-group" id="fpg-metaball">
+<div class="pr"><div class="pn">Grid resolution</div><span class="pv" id="v-mR">22</span><input type="range" min="10" max="32" value="22" step="2" id="mR" oninput="sv('mR','v-mR',0)"></div>
+<div class="pr"><div class="pn">Ball radius</div><span class="pv" id="v-mBR">90</span><input type="range" min="20" max="150" value="90" step="5" id="mBR" oninput="sv('mBR','v-mBR',0)"></div>
+<div class="pr"><div class="pn">Iso threshold</div><span class="pv" id="v-mIso">.38</span><input type="range" min=".1" max="1.2" value=".38" step=".01" id="mIso" oninput="sv('mIso','v-mIso',2)"></div>
+</div>
+</div>
+
+<div class="brow">
+<button class="btn p" onclick="reb()">Reinitialise</button>
+<button class="btn a" onclick="crystallise()">Crystallise</button>
+</div>
+</div><!-- /sidebar -->
+
+<!-- MAIN -->
+<div id="main">
+<div id="topbar">
+  <h1>ABST v5 — Quest 3</h1>
+  <span class="badge b-teal">Force field</span>
+  <span class="badge b-purple">Distributed agency</span>
+  <span class="badge b-xr" id="xrBadge" style="display:none">● XR Live</span>
+  <div id="stageBar">
+    <button class="stbtn active" onclick="setStage(1,this)">Stage 1</button>
+    <button class="stbtn" onclick="setStage(2,this)">Stage 2</button>
+    <button class="stbtn" onclick="setStage(3,this)">Stage 3</button>
+  </div>
+</div>
+<canvas id="canvas"></canvas>
+<div id="statsBar">
+  <div class="st"><div class="st-dot" style="background:#2a5a8a"></div><span class="st-lbl">Human</span><span class="st-val" id="st-h">—</span></div>
+  <div class="st"><div class="st-dot" style="background:#4a4a7a"></div><span class="st-lbl">Agents</span><span class="st-val" id="st-ag">0</span></div>
+  <div class="st"><div class="st-dot" style="background:#2a6a3a"></div><span class="st-lbl">Trails</span><span class="st-val" id="st-tr">0</span></div>
+  <div class="st"><div class="st-dot" style="background:#7a5a18"></div><span class="st-lbl">Field E</span><span class="st-val" id="st-fe">0.00</span></div>
+  <div class="st"><div class="st-dot" style="background:#1a1a2a"></div><span class="st-lbl">FPS</span><span class="st-val" id="st-fps">60</span></div>
+</div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+// ABST v5 — Quest 3
+// Render strategy:
+//   Desktop Stage 1: Canvas2D (top-down field view)
+//   Desktop Stage 2/3: WebGL2 — our own shaders, no Three.js
+//   XR: raw WebXR loop → same WebGL2 shaders, view matrices
+//       written directly from XR view — camera object never touched
+// This eliminates the Three.js r128 frozen ArrayCamera bug permanently.
+// ════════════════════════════════════════════════════════════
+
+// ── Error fence ───────────────────────────────────────────────
+window.addEventListener('error', e => { if(e.message && e.message !== 'Script error.') console.error('[ABST]', e.message); });
+window.addEventListener('unhandledrejection', e => { const m = String(e.reason?.message||e.reason); if(!m.includes('permissions policy') && !m.includes('disallowed')) console.error('[ABST promise]', m); });
+
+// ── Helpers ───────────────────────────────────────────────────
+const gv = id => parseFloat(document.getElementById(id).value);
+const u2 = (id, v) => { const e = document.getElementById(id); if(e) e.textContent = v; };
+const sv = (id, vid, dec) => u2(vid, gv(id).toFixed(dec));
+
+// ── Simulation domain ─────────────────────────────────────────
+const DOM = 500, HALF = DOM/2;
+
+// ── Human agent ───────────────────────────────────────────────
+const human = { x:HALF, y:HALF, z:HALF, vx:0, vy:0, vz:0, trail:[], gaze:[0,0,-1] };
+const human2 = { x:HALF*1.3, y:HALF*.7, z:HALF, vx:0, vy:0, vz:0, trail:[] };
+
+// ── Agents ────────────────────────────────────────────────────
+let agents = [], trailMap = [], fieldPts = [], frameC = 0;
+let stage = 1, formMode = 'massing', lastCrystal = 0;
+let lastT = performance.now(), accumT = 0, fps = 60;
+
+const COLS = { charge:'#5a7aee', pulse:'#e08020', trail:'#2ab870', attractor:'#e03820' };
+
+class Agent {
+  constructor(type) {
+    this.type = type; this.phase = Math.random()*Math.PI*2;
+    this.x = 60+Math.random()*(DOM-120); this.y = 60+Math.random()*(DOM-120);
+    this.z = DOM*.2+Math.random()*DOM*.6;
+    const a = Math.random()*Math.PI*2, sp = gv(type==='attractor'?'aMV':type==='pulse'?'pMV':type==='trail'?'tMV':'cMV');
+    this.vx = Math.cos(a)*sp; this.vy = Math.sin(a)*sp; this.vz = 0;
+    this.trail = []; this.depositT = 0;
+  }
+  update(dt) {
+    const nr = gv('nr'), zF = gv('zF');
+    const mv = gv(this.type==='attractor'?'aMV':this.type==='pulse'?'pMV':this.type==='trail'?'tMV':'cMV');
+    const coh = gv(this.type==='pulse'?'pCoh':this.type==='trail'?'cCoh':'cCoh')*dt;
+    const sep = gv(this.type==='pulse'?'pSep':this.type==='trail'?'cSep':'cSep')*.04*dt;
+    let cx=0,cy=0,cz=0,sx=0,sy=0,sz=0,ax=0,ay=0,az=0,n=0;
+    for(const b of agents) {
+      if(b===this) continue;
+      const dx=b.x-this.x, dy=b.y-this.y, dz=b.z-this.z, d=Math.sqrt(dx*dx+dy*dy+dz*dz);
+      if(d<nr&&d>0){cx+=b.x;cy+=b.y;cz+=b.z;ax+=b.vx;ay+=b.vy;az+=b.vz;n++;if(d<50){const id=1/d;sx-=dx*id;sy-=dy*id;sz-=dz*id;}}
+    }
+    const hdx=human.x-this.x,hdy=human.y-this.y,hdz=human.z-this.z,hd=Math.sqrt(hdx*hdx+hdy*hdy+hdz*hdz);
+    if(hd<nr&&hd>0){cx+=human.x;cy+=human.y;cz+=human.z;n++;if(hd<50){const id=1/hd;sx-=hdx*id;sy-=hdy*id;sz-=hdz*id;}}
+    if(n>0){this.vx+=((cx/n)-this.x)*coh+sx*sep+(ax/n-this.vx)*.06*dt;this.vy+=((cy/n)-this.y)*coh+sy*sep+(ay/n-this.vy)*.06*dt;this.vz+=((cz/n)-this.z)*coh*zF+sz*sep*zF+(az/n-this.vz)*.06*dt*zF;}
+    // Spin force from human
+    {const dx=this.x-human.x,dy=this.y-human.y,d=Math.sqrt(dx*dx+dy*dy)||.1;const sR=gv('spinR');if(d<sR){const dc=Math.exp(-d/gv('spinDc'));const hvl=Math.sqrt(human.vx**2+human.vy**2)||.01;this.vx+=(-human.vy/hvl)*gv('spinStr')*dc;this.vy+=(human.vx/hvl)*gv('spinStr')*dc;}}
+    // Point charge from human
+    {const dx=this.x-human.x,dy=this.y-human.y,d=Math.sqrt(dx*dx+dy*dy)||.1;const m=gv('cStr')*1.2/(1+(d/gv('cDc'))*(d/gv('cDc')));this.vx+=dx/d*m*.01;this.vy+=dy/d*m*.01;}
+    this.vz += Math.sin(this.x*.005+this.y*.004+frameC*.007)*.012*dt*zF;
+    if(this.type==='attractor'){this.vx*=Math.pow(.97,dt);this.vy*=Math.pow(.97,dt);this.vz*=Math.pow(.97,dt);}
+    const bm=55,bs=gv('bStr')*.4;
+    if(this.x<bm)this.vx+=bs*(bm-this.x)/bm*dt;if(this.x>DOM-bm)this.vx-=bs*(this.x-(DOM-bm))/bm*dt;
+    if(this.y<bm)this.vy+=bs*(bm-this.y)/bm*dt;if(this.y>DOM-bm)this.vy-=bs*(this.y-(DOM-bm))/bm*dt;
+    if(this.z<bm)this.vz+=bs*(bm-this.z)/bm*dt;if(this.z>DOM-bm)this.vz-=bs*(this.z-(DOM-bm))/bm*dt;
+    const spd=Math.sqrt(this.vx**2+this.vy**2+this.vz**2)||1;
+    if(spd>mv*dt){const s=mv*dt/spd;this.vx*=s;this.vy*=s;this.vz*=s;}
+    this.x=Math.max(5,Math.min(DOM-5,this.x+this.vx)); this.y=Math.max(5,Math.min(DOM-5,this.y+this.vy)); this.z=Math.max(5,Math.min(DOM-5,this.z+this.vz));
+    this.trail.push([this.x,this.y,this.z]); if(this.trail.length>16) this.trail.shift();
+    if(this.type==='trail'){this.depositT+=1/60;if(this.depositT>gv('tInt')){this.depositT=0;trailMap.push({x:this.x,y:this.y,z:this.z,s:gv('tDStr')});}}
+  }
+  fc(px,py) {
+    const dx=px-this.x,dy=py-this.y,d=Math.sqrt(dx*dx+dy*dy)||.1;
+    let s=gv('cStr'), dc=gv('cDc');
+    if(this.type==='pulse'){s=gv('pStr')*(1+gv('pAmp')*Math.sin(frameC*gv('pRate')+this.phase));dc=gv('pDc');}
+    if(this.type==='trail'){s=gv('tFStr');dc=gv('trDc');}
+    if(this.type==='attractor'){s=gv('aStr')*gv('aMult');dc=12;}
+    const m=s/(1+(d/dc)*(d/dc));
+    let fx=dx/d*m,fy=dy/d*m;
+    if(this.type==='attractor'){const v=gv('aVx');fx+=(-dy/d)*m*v;fy+=(dx/d)*m*v;}
+    return{fx,fy,mag:Math.abs(m)};
+  }
+}
+
+function reb() {
+  agents=[];trailMap=[];
+  for(let i=0;i<gv('cN');i++) agents.push(new Agent('charge'));
+  for(let i=0;i<gv('pN');i++) agents.push(new Agent('pulse'));
+  for(let i=0;i<gv('tN');i++) agents.push(new Agent('trail'));
+  for(let i=0;i<gv('aN');i++) agents.push(new Agent('attractor'));
+  u2('st-ag', agents.length);
+}
+
+function rawF(px,py) {
+  let fx=0,fy=0;
+  // human1
+  {const dx=px-human.x,dy=py-human.y,d=Math.sqrt(dx*dx+dy*dy)||.1;const sR=gv('spinR');if(d<sR){const dc=Math.exp(-d/gv('spinDc'));const hvl=Math.sqrt(human.vx**2+human.vy**2)||.01;fx+=(-human.vy/hvl)*gv('spinStr')*dc;fy+=(human.vx/hvl)*gv('spinStr')*dc;}const m=gv('cStr')*1.2/(1+(d/gv('cDc'))*(d/gv('cDc')));fx+=dx/d*m;fy+=dy/d*m;}
+  // human2
+  {const dx=px-human2.x,dy=py-human2.y,d=Math.sqrt(dx*dx+dy*dy)||.1;const sR=gv('spinR');if(d<sR){const dc=Math.exp(-d/gv('spinDc'));const hvl=Math.sqrt(human2.vx**2+human2.vy**2)||.01;fx+=(-human2.vy/hvl)*gv('spinStr')*dc;fy+=(human2.vx/hvl)*gv('spinStr')*dc;}const m=gv('cStr')*1.1/(1+(d/gv('cDc'))*(d/gv('cDc')));fx+=dx/d*m;fy+=dy/d*m;}
+  for(const ag of agents){const c=ag.fc(px,py);fx+=c.fx;fy+=c.fy;}
+  for(const t of trailMap){const dx=px-t.x,dy=py-t.y,d=Math.sqrt(dx*dx+dy*dy)||.1;const m=t.s/(1+(d/gv('trDc'))*(d/gv('trDc')));fx+=dx/d*m;fy+=dy/d*m;}
+  const bm=55,bs=gv('bStr')*.38;
+  if(px<bm)fx+=bs*(bm-px)/bm;if(px>DOM-bm)fx-=bs*(px-(DOM-bm))/bm;if(py<bm)fy+=bs*(bm-py)/bm;if(py>DOM-bm)fy-=bs*(py-(DOM-bm))/bm;
+  const mag=Math.sqrt(fx*fx+fy*fy)||.001; return{fx:fx/mag,fy:fy/mag,mag};
+}
+
+function computeField() {
+  const res=16,step=DOM/res; fieldPts=[]; let tot=0;
+  for(let j=0;j<=res;j++) for(let i=0;i<=res;i++){const p=rawF(i*step,j*step);fieldPts.push({px:i*step,py:j*step,...p});tot+=p.mag;}
+  u2('st-fe',(tot/fieldPts.length).toFixed(2));
+}
+
+function stepHuman(h,dt) {
+  const sp=gv('hspd')*dt,bm=30;
+  h.vx*=Math.pow(.85,dt);h.vy*=Math.pow(.85,dt);h.vz*=Math.pow(.85,dt);
+  const spd=Math.sqrt(h.vx**2+h.vy**2+h.vz**2);if(spd>sp){const s=sp/spd;h.vx*=s;h.vy*=s;h.vz*=s;}
+  h.trail.push([h.x,h.y,h.z]);if(h.trail.length>22)h.trail.shift();
+  h.x=Math.max(bm,Math.min(DOM-bm,h.x+h.vx));h.y=Math.max(bm,Math.min(DOM-bm,h.y+h.vy));h.z=Math.max(bm,Math.min(DOM-bm,h.z+h.vz));
+}
+
+// ════════════════════════════════════════════════════════════
+// WEBGL2 RENDERER — pure, no Three.js
+// ════════════════════════════════════════════════════════════
+const canvas = document.getElementById('canvas');
+const gl = canvas.getContext('webgl2', {antialias:true, powerPreference:'high-performance', xrCompatible:true});
+
+// Shaders
+function mkShader(type, src) {
+  const s = gl.createShader(type); gl.shaderSource(s,src); gl.compileShader(s);
+  if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) { console.error(gl.getShaderInfoLog(s)); return null; }
+  return s;
+}
+function mkProg(vsrc, fsrc) {
+  const p = gl.createProgram();
+  gl.attachShader(p, mkShader(gl.VERTEX_SHADER, vsrc));
+  gl.attachShader(p, mkShader(gl.FRAGMENT_SHADER, fsrc));
+  gl.linkProgram(p); return p;
+}
+
+// Main geometry program
+const mainProg = mkProg(`#version 300 es
+precision highp float;
+in vec3 aPos; in vec3 aCol;
+uniform mat4 uProj; uniform mat4 uView; uniform mat4 uModel;
+out vec3 vCol;
+void main(){vCol=aCol;gl_Position=uProj*uView*uModel*vec4(aPos,1.);gl_PointSize=7.;}`,
+`#version 300 es
+precision mediump float;
+in vec3 vCol; out vec4 fragColor;
+void main(){fragColor=vec4(vCol,1.);}` );
+const aPos=gl.getAttribLocation(mainProg,'aPos');
+const aCol=gl.getAttribLocation(mainProg,'aCol');
+const uProj=gl.getUniformLocation(mainProg,'uProj');
+const uView=gl.getUniformLocation(mainProg,'uView');
+const uModel=gl.getUniformLocation(mainProg,'uModel');
+
+// Panel texture program
+const panelProg = mkProg(`#version 300 es
+precision highp float;
+in vec3 aPos; in vec2 aUV;
+uniform mat4 uProj; uniform mat4 uView; uniform mat4 uModel;
+out vec2 vUV;
+void main(){vUV=aUV;gl_Position=uProj*uView*uModel*vec4(aPos,1.);}`,
+`#version 300 es
+precision mediump float;
+in vec2 vUV; uniform sampler2D uTex; out vec4 fragColor;
+void main(){vec4 t=texture(uTex,vUV);if(t.a<.01)discard;fragColor=t;}` );
+const pAPos=gl.getAttribLocation(panelProg,'aPos');
+const pAUV=gl.getAttribLocation(panelProg,'aUV');
+const pUProj=gl.getUniformLocation(panelProg,'uProj');
+const pUView=gl.getUniformLocation(panelProg,'uView');
+const pUModel=gl.getUniformLocation(panelProg,'uModel');
+const pUTex=gl.getUniformLocation(panelProg,'uTex');
+
+// ── mat4 utils ────────────────────────────────────────────────
+const I4=()=>new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]);
+function m4mul(a,b){const o=new Float32Array(16);for(let i=0;i<4;i++)for(let j=0;j<4;j++){let s=0;for(let k=0;k<4;k++)s+=a[i+k*4]*b[k+j*4];o[i+j*4]=s;}return o;}
+function m4trans(x,y,z){const m=I4();m[12]=x;m[13]=y;m[14]=z;return m;}
+function m4pers(fov,asp,n,f){const t=Math.tan(fov*.5),o=new Float32Array(16);o[0]=1/(asp*t);o[5]=1/t;o[10]=-(f+n)/(f-n);o[11]=-1;o[14]=-2*f*n/(f-n);return o;}
+function m4lookAt(ex,ey,ez,cx,cy,cz){
+  let fx=cx-ex,fy=cy-ey,fz=cz-ez,l=Math.sqrt(fx*fx+fy*fy+fz*fz)||1;fx/=l;fy/=l;fz/=l;
+  let rx=fy*0-0*fz,ry=0*fx-fx*0,rz=fx*fy-fy*fx;// up=(0,1,0)
+  rx=fy*1-0*fz; ry=0*fx-fz*1; rz=fx*0-fy*0;
+  rx=-fz; ry=0; rz=fx; // right = forward × up(0,1,0)
+  rx=fy*1-fz*0;ry=fz*0-fx*1;rz=fx*0-fy*0; //nope, manual:
+  // right = normalize(forward × up)
+  const up=[0,1,0];
+  const r=[fy*up[2]-fz*up[1],fz*up[0]-fx*up[2],fx*up[1]-fy*up[0]];
+  l=Math.sqrt(r[0]**2+r[1]**2+r[2]**2)||1;r[0]/=l;r[1]/=l;r[2]/=l;
+  const u=[fy*r[2]-fz*r[1],fz*r[0]-fx*r[2],fx*r[1]-fy*r[0]];
+  return new Float32Array([r[0],u[0],-fx,0,r[1],u[1],-fy,0,r[2],u[2],-fz,0,-(r[0]*ex+r[1]*ey+r[2]*ez),-(u[0]*ex+u[1]*ey+u[2]*ez),-(-fx*ex-fy*ey-fz*ez),1]);
+}
+
+// ── VAO helpers ───────────────────────────────────────────────
+function mkVAO(prog, pos, col) {
+  const vao=gl.createVertexArray(); gl.bindVertexArray(vao);
+  const pb=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,pb); gl.bufferData(gl.ARRAY_BUFFER,pos,gl.DYNAMIC_DRAW);
+  const ap=gl.getAttribLocation(prog,'aPos'); gl.enableVertexAttribArray(ap); gl.vertexAttribPointer(ap,3,gl.FLOAT,false,0,0);
+  const cb=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,cb); gl.bufferData(gl.ARRAY_BUFFER,col,gl.DYNAMIC_DRAW);
+  const ac=gl.getAttribLocation(prog,'aCol'); gl.enableVertexAttribArray(ac); gl.vertexAttribPointer(ac,3,gl.FLOAT,false,0,0);
+  gl.bindVertexArray(null);
+  return{vao,pb,cb,n:pos.length/3};
+}
+function updVAO(v, pos, col){
+  v.n=pos.length/3;
+  gl.bindBuffer(gl.ARRAY_BUFFER,v.pb); gl.bufferData(gl.ARRAY_BUFFER,pos,gl.DYNAMIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER,v.cb); gl.bufferData(gl.ARRAY_BUFFER,col,gl.DYNAMIC_DRAW);
+}
+function drawVAO(v, mode, proj, view, model){
+  if(!v||v.n<1) return;
+  gl.bindVertexArray(v.vao);
+  gl.uniformMatrix4fv(uProj,false,proj); gl.uniformMatrix4fv(uView,false,view); gl.uniformMatrix4fv(uModel,false,model);
+  gl.drawArrays(mode,0,v.n); gl.bindVertexArray(null);
+}
+
+// Coordinate mapping: sim→scene (scene centred, ~10m wide)
+function toGL(x,y,z){return[(x/DOM-.5)*14,(z/DOM-.5)*8,(y/DOM-.5)*14];}
+
+// ── Scene geometry buffers ────────────────────────────────────
+let vaoAgents=null, vaoTrailLines=null, vaoStreamLines=null, vaoFormBoxes=null;
+let vaoHuman=null, vaoGrid=null;
+
+function hexRGB(h){return[(h>>16&255)/255,(h>>8&255)/255,(h&255)/255];}
+
+function buildGrid(){
+  const pos=[],col=[];
+  for(let i=-7;i<=7;i++){pos.push(i,0,-7,i,0,7);pos.push(-7,0,i,7,0,i);for(let j=0;j<4;j++)col.push(.04,.04,.09);}
+  return mkVAO(mainProg,new Float32Array(pos),new Float32Array(col));
+}
+
+function buildAgentGeom(){
+  const pos=[],col=[];
+  for(const ag of agents){const[x,y,z]=toGL(ag.x,ag.y,ag.z);pos.push(x,y,z);const c=hexRGB(parseInt(COLS[ag.type].slice(1),16));col.push(...c);}
+  // human1
+  const[hx,hy,hz]=toGL(human.x,human.y,human.z);pos.push(hx,hy,hz);col.push(.27,.67,1);
+  // human2
+  const[h2x,h2y,h2z]=toGL(human2.x,human2.y,human2.z);pos.push(h2x,h2y,h2z);col.push(.13,.88,.75);
+  if(!vaoAgents) vaoAgents=mkVAO(mainProg,new Float32Array(pos),new Float32Array(col));
+  else updVAO(vaoAgents,new Float32Array(pos),new Float32Array(col));
+}
+
+function buildTrailLines(){
+  const pos=[],col=[];
+  for(const ag of agents){
+    if(ag.trail.length<2) continue;
+    const c=hexRGB(parseInt(COLS[ag.type].slice(1),16));
+    for(let i=1;i<ag.trail.length;i++){
+      const t=(i-1)/(ag.trail.length-1);
+      pos.push(...toGL(...ag.trail[i-1]),...toGL(...ag.trail[i]));
+      col.push(c[0]*t,c[1]*t,c[2]*t,c[0]*t,c[1]*t,c[2]*t);
+    }
+  }
+  // human trail
+  if(human.trail.length>1){for(let i=1;i<human.trail.length;i++){pos.push(...toGL(...human.trail[i-1]),...toGL(...human.trail[i]));const t=i/human.trail.length;col.push(.27*t,.67*t,1*t,.27*t,.67*t,1*t);}}
+  if(pos.length===0){if(!vaoTrailLines)vaoTrailLines={vao:gl.createVertexArray(),pb:null,cb:null,n:0};return;}
+  if(!vaoTrailLines) vaoTrailLines=mkVAO(mainProg,new Float32Array(pos),new Float32Array(col));
+  else updVAO(vaoTrailLines,new Float32Array(pos),new Float32Array(col));
+}
+
+function buildStreamLines(){
+  const pos=[],col=[];
+  const op=gv('fOp');
+  const SRCS=[{x:human.x,y:human.y,z:human.z,r:.27,g:.67,b:1},...agents.map(a=>({x:a.x,y:a.y,z:a.z,...(c=>({r:c[0],g:c[1],b:c[2]}))(hexRGB(parseInt(COLS[a.type].slice(1),16)))}))];
+  for(const src of SRCS){
+    for(let r=0;r<8;r++){
+      const ang=r/8*Math.PI*2;
+      let cx=src.x+Math.cos(ang)*6,cy=src.y+Math.sin(ang)*6,cz=src.z;
+      let prev=null;
+      for(let s=0;s<55;s++){
+        if(cx<3||cx>DOM-3||cy<3||cy>DOM-3) break;
+        const f=rawF(cx,cy);
+        let dz=0;
+        if(stage>=2){// 3D vertical component
+          const pv=[cx/DOM-.5,cz/DOM-.5,cy/DOM-.5],fv=[f.fx,0,f.fy];
+          dz=(fv[1]*pv[2]-fv[2]*pv[1])*.5;
+        }
+        const cur=toGL(cx,cy,cz);
+        if(prev){pos.push(...prev,...cur);const t=s/55;col.push(src.r*t*op,src.g*t*op,src.b*t*op,src.r*t*op,src.g*t*op,src.b*t*op);}
+        prev=cur;
+        cx+=f.fx*6*(DOM/14); cy+=f.fy*6*(DOM/14); cz=Math.max(5,Math.min(DOM-5,cz+dz*(DOM/8)));
+      }
+    }
+  }
+  if(pos.length===0){vaoStreamLines={vao:gl.createVertexArray(),pb:null,cb:null,n:0};return;}
+  if(!vaoStreamLines) vaoStreamLines=mkVAO(mainProg,new Float32Array(pos),new Float32Array(col));
+  else updVAO(vaoStreamLines,new Float32Array(pos),new Float32Array(col));
+}
+
+// Field Massing (CA boxes)
+function buildFieldMassing(){
+  const caR=parseInt(gv('caR')),caS=parseInt(gv('caS')),caT=gv('caT');
+  const agB=gv('caAB'),caL=parseInt(gv('caL')),caLH=gv('caLH');
+  const N=caR+2,gi=(i,j)=>j*N+i;
+  let fMin=1e9,fMax=-1e9;for(const p of fieldPts){if(p.mag<fMin)fMin=p.mag;if(p.mag>fMax)fMax=p.mag;}
+  const fR=(fMax-fMin)||1;
+  const cellSz=14/caR,ox=-7+cellSz*.5,oz=-7+cellSz*.5;
+  const pos=[],col=[];
+  const box=(cx,cy,cz,sx,sy,sz,r,g,b)=>{
+    const x0=cx-sx/2,x1=cx+sx/2,y0=cy-sy/2,y1=cy+sy/2,z0=cz-sz/2,z1=cz+sz/2;
+    const verts=[[x0,y1,z0],[x1,y1,z0],[x1,y1,z1],[x0,y1,z0],[x1,y1,z1],[x0,y1,z1],[x0,y0,z0],[x1,y0,z0],[x1,y0,z1],[x0,y0,z0],[x1,y0,z1],[x0,y0,z1],[x0,y0,z0],[x0,y1,z0],[x0,y1,z1],[x0,y0,z0],[x0,y1,z1],[x0,y0,z1],[x1,y0,z0],[x1,y1,z0],[x1,y1,z1],[x1,y0,z0],[x1,y1,z1],[x1,y0,z1],[x0,y0,z0],[x1,y0,z0],[x1,y1,z0],[x0,y0,z0],[x1,y1,z0],[x0,y1,z0],[x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y0,z1],[x1,y1,z1],[x0,y1,z1]];
+    for(const v of verts){pos.push(...v);col.push(r,g,b);}
+  };
+  for(let layer=0;layer<caL;layer++){
+    const layerZ=DOM*(.1+(layer/Math.max(caL-1,1))*.8),layerY=(layerZ/DOM-.5)*8;
+    let ca=new Uint8Array(N*N),ca2=new Uint8Array(N*N);
+    for(let j=1;j<=caR;j++) for(let i=1;i<=caR;i++){
+      const px=(i-1)/(caR-1)*DOM,py=(j-1)/(caR-1)*DOM;
+      let aE=0;for(const ag of [...agents,human,human2]){const d=Math.hypot(ag.x-px,ag.y-py),dz=Math.abs(ag.z-layerZ);aE+=Math.exp(-d/(DOM*.1))*Math.exp(-dz/(DOM*.2))*agB;}
+      const f=rawF(px,py);ca[gi(i,j)]=((f.mag-fMin)/fR+aE*.25)>caT?1:0;
+    }
+    const nb=(a,i,j)=>{let n=0;for(let di=-1;di<=1;di++)for(let dj=-1;dj<=1;dj++){if(!di&&!dj)continue;const ni=i+di,nj=j+dj;if(ni>=1&&ni<=caR&&nj>=1&&nj<=caR)n+=a[gi(ni,nj)];}return n;};
+    for(let s=0;s<caS;s++){for(let j=1;j<=caR;j++)for(let i=1;i<=caR;i++){const nb2=nb(ca,i,j),alive=ca[gi(i,j)]===1;ca2[gi(i,j)]=alive?(nb2>=2&&nb2<=4?1:0):(nb2===3?1:0);}[ca,ca2]=[ca2,ca];}
+    const t=layer/Math.max(caL-1,1);
+    for(let j=1;j<=caR;j++) for(let i=1;i<=caR;i++){
+      if(!ca[gi(i,j)]) continue;
+      const px=(i-1)/(caR-1)*DOM,py=(j-1)/(caR-1)*DOM,f=rawF(px,py);
+      // HSL→RGB simple
+      const h=.52-.2*t,l=.32+f.mag*.2,s2=.5;
+      const q=l<.5?l*(1+s2):l+s2-l*s2,p2=2*l-q;
+      const hue2r=h=>{h=(h%1+1)%1;if(h<1/6)return p2+(q-p2)*6*h;if(h<.5)return q;if(h<2/3)return p2+(q-p2)*(2/3-h)*6;return p2;};
+      const r=hue2r(h+1/3),g2=hue2r(h),b=hue2r(h-1/3);
+      const h2=Math.max(caLH*.5,.1);
+      box(ox+(i-1)*cellSz,layerY,oz+(j-1)*cellSz,cellSz*.8,h2,cellSz*.8,r,g2,b);
+    }
+  }
+  if(pos.length===0){vaoFormBoxes={vao:gl.createVertexArray(),pb:null,cb:null,n:0};return;}
+  if(!vaoFormBoxes) vaoFormBoxes=mkVAO(mainProg,new Float32Array(pos),new Float32Array(col));
+  else updVAO(vaoFormBoxes,new Float32Array(pos),new Float32Array(col));
+}
+
+function crystallise(){if(stage===3)buildFieldMassing();}
+
+// ── VR Panel texture ──────────────────────────────────────────
+const PW=640,PH=800,PM_W=0.55,PM_H=0.69;
+const pc=document.createElement('canvas');pc.width=PW;pc.height=PH;
+const pctx=pc.getContext('2d');
+const panelTex=gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D,panelTex);
+gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+
+// Panel quad VAO
+const pqPos=new Float32Array([-PM_W/2,-PM_H/2,0,PM_W/2,-PM_H/2,0,PM_W/2,PM_H/2,0,-PM_W/2,-PM_H/2,0,PM_W/2,PM_H/2,0,-PM_W/2,PM_H/2,0]);
+const pqUV=new Float32Array([0,1,1,1,1,0,0,1,1,0,0,0]);
+const pqVAO=gl.createVertexArray(); gl.bindVertexArray(pqVAO);
+const pqPB=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,pqPB);gl.bufferData(gl.ARRAY_BUFFER,pqPos,gl.STATIC_DRAW);gl.enableVertexAttribArray(pAPos);gl.vertexAttribPointer(pAPos,3,gl.FLOAT,false,0,0);
+const pqUB=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,pqUB);gl.bufferData(gl.ARRAY_BUFFER,pqUV,gl.STATIC_DRAW);gl.enableVertexAttribArray(pAUV);gl.vertexAttribPointer(pAUV,2,gl.FLOAT,false,0,0);
+gl.bindVertexArray(null);
+
+// Panel hit regions
+let hitRegions=[];
+const SLIDERS_DEF=[
+  {id:'spinStr',l:'Spin strength',mn:.5,mx:25,st:.5},{id:'spinR',l:'Spin radius',mn:20,mx:200,st:5},{id:'spinDc',l:'Spin decay',mn:.5,mx:15,st:.5},{id:'hspd',l:'Move speed',mn:.3,mx:8,st:.1},
+  {id:'cN',l:'Charge count',mn:0,mx:12,st:1,reb:1},{id:'pN',l:'Pulse count',mn:0,mx:8,st:1,reb:1},{id:'tN',l:'Trail count',mn:0,mx:6,st:1,reb:1},{id:'aN',l:'Attractor count',mn:0,mx:4,st:1,reb:1},
+  {id:'cStr',l:'Charge str',mn:.5,mx:25,st:.5},{id:'nr',l:'Neighbour r',mn:15,mx:220,st:5},{id:'fOp',l:'Field opacity',mn:.1,mx:1,st:.01},{id:'spd',l:'Sim speed',mn:.05,mx:3,st:.05},
+];
+function rr(c,x,y,w,h,r=5){c.beginPath();c.moveTo(x+r,y);c.lineTo(x+w-r,y);c.arcTo(x+w,y,x+w,y+r,r);c.lineTo(x+w,y+h-r);c.arcTo(x+w,y+h,x+w-r,y+h,r);c.lineTo(x+r,y+h);c.arcTo(x,y+h,x,y+h-r,r);c.lineTo(x,y+r);c.arcTo(x,y,x+r,y,r);c.closePath();}
+function drawPanel(){
+  const c=pctx,W=PW,H=PH;
+  c.clearRect(0,0,W,H);
+  c.fillStyle='rgba(4,4,14,.97)';rr(c,0,0,W,H,14);c.fill();
+  c.strokeStyle='#1e1e52';c.lineWidth=1.5;rr(c,1,1,W-2,H-2,13);c.stroke();
+  c.fillStyle='#5a5aee';c.font='bold 16px monospace';c.fillText('ABST v5  VR PANEL',18,30);
+  c.fillStyle='#1a1a46';c.font='10px monospace';c.fillText('Right pinch+drag sliders · Left fist = recentre',18,48);
+  hitRegions=[];
+  // Stage buttons
+  const sbw=(W-36-8)/3;let sx=18;
+  for(const[n,lbl]of[[1,'Stage 1'],[2,'Stage 2'],[3,'Stage 3']]){
+    const act=stage===n;c.fillStyle=act?'#14143a':'#07071a';rr(c,sx,56,sbw,28,4);c.fill();c.strokeStyle=act?'#4040aa':'#141428';c.lineWidth=1;c.stroke();c.fillStyle=act?'#8080ff':'#282850';c.font='bold 11px monospace';c.textAlign='center';c.fillText(lbl,sx+sbw/2,74);c.textAlign='left';
+    hitRegions.push({type:'stage',n,cx:sx,cy:56,cw:sbw,ch:28});sx+=sbw+4;
+  }
+  let gy=94;
+  c.strokeStyle='#0e0e28';c.lineWidth=1;c.beginPath();c.moveTo(18,gy);c.lineTo(W-18,gy);c.stroke();gy+=6;
+  // Sliders 2 columns
+  const C2=2,SW=(W-36-10)/2,SH=34;let lastRow=-1;
+  for(let i=0;i<SLIDERS_DEF.length;i++){
+    const col=i%C2,row=Math.floor(i/C2);
+    if(row!==lastRow&&i>0)gy+=SH+5;lastRow=row;
+    const sx2=18+col*(SW+10),s=SLIDERS_DEF[i],val=gv(s.id);
+    const norm=Math.max(0,Math.min(1,(val-s.mn)/(s.mx-s.mn)));
+    c.fillStyle='#2a2a60';c.font='9px monospace';c.textAlign='left';c.fillText(s.l.toUpperCase(),sx2,gy+9);
+    c.fillStyle='#8080ff';c.font='bold 9px monospace';c.textAlign='right';c.fillText(val.toFixed(s.st<.01?3:s.st<1?2:0),sx2+SW,gy+9);c.textAlign='left';
+    const ty=gy+12,th=11;
+    c.fillStyle='#09091e';rr(c,sx2,ty,SW,th,5);c.fill();
+    if(norm>0){c.fillStyle='#2a2a8a';rr(c,sx2,ty,SW*norm,th,5);c.fill();}
+    c.fillStyle='#8080ff';c.beginPath();c.arc(Math.min(sx2+SW*norm,sx2+SW-2),ty+th/2,6,0,Math.PI*2);c.fill();
+    hitRegions.push({type:'slider',...s,cx:sx2,cy:ty,cw:SW,ch:th+4});
+  }
+  gy+=SH+8;
+  c.strokeStyle='#0e0e28';c.lineWidth=1;c.beginPath();c.moveTo(18,gy);c.lineTo(W-18,gy);c.stroke();gy+=6;
+  // Buttons
+  const bw=(W-36-10)/2;
+  [['Reinit agents','reinit'],['Crystallise','crystal']].forEach(([lbl,k],i)=>{
+    const bx=18+i*(bw+10);c.fillStyle='#09091e';rr(c,bx,gy,bw,24,4);c.fill();c.strokeStyle='#20205a';c.lineWidth=1;c.stroke();c.fillStyle='#5a5acc';c.font='bold 11px monospace';c.textAlign='center';c.fillText(lbl,bx+bw/2,gy+16);c.textAlign='left';
+    hitRegions.push({type:'btn',k,cx:bx,cy:gy,cw:bw,ch:24});
+  });
+  gy+=32;
+  // Live data
+  const hf=rawF(human.x,human.y);
+  c.fillStyle='#090918';rr(c,12,gy,W-24,40,4);c.fill();
+  c.fillStyle='#4aaaff';c.font='bold 9px monospace';c.fillText('HUMAN AGENT 1 — HEAD POSE (YOU IN VR)',18,gy+12);
+  c.fillStyle='#1a3a58';c.font='9px monospace';
+  c.fillText(`Pos:(${Math.round(human.x)},${Math.round(human.y)},${Math.round(human.z)})  Field:${hf.mag.toFixed(2)}  Boids:${agents.length}`,18,gy+25);
+  c.fillText(`Gaze:(${human.gaze[0].toFixed(2)},${human.gaze[1].toFixed(2)},${human.gaze[2].toFixed(2)})  Trails:${trailMap.length}`,18,gy+38);
+  gl.bindTexture(gl.TEXTURE_2D,panelTex);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,pc);
+}
+
+// Panel world transform
+let panelPos=new Float32Array([0,1.55,-.9]);
+let panelYaw=0;
+let xrNeedsRecentre=true;
+function panelModelMatrix(){
+  const cy=Math.cos(panelYaw),sy=Math.sin(panelYaw);
+  return new Float32Array([cy,0,sy,0,0,1,0,0,-sy,0,cy,0,panelPos[0],panelPos[1],panelPos[2],1]);
+}
+function recentrePanel(hp,hq){
+  const[qx,qy,qz,qw]=hq;
+  const gx=2*(qx*qz+qw*qy),gz=1-2*(qx*qx+qy*qy);
+  const hl=Math.sqrt(gx*gx+gz*gz)||.001;
+  panelPos[0]=hp[0]+gx/hl*.9; panelPos[1]=hp[1]-.02; panelPos[2]=hp[2]+gz/hl*.9;
+  panelYaw=Math.atan2(hp[0]-panelPos[0],hp[2]-panelPos[2]);
+  xrNeedsRecentre=false;
+}
+
+// Panel hit test (world pos → UV → region)
+function panelHit(wx,wy,wz){
+  // panel local coords
+  const cy=Math.cos(-panelYaw),sy=Math.sin(-panelYaw);
+  const rx=cy*(wx-panelPos[0])+sy*(wz-panelPos[2]);
+  const ry=wy-panelPos[1];
+  const rz=-sy*(wx-panelPos[0])+cy*(wz-panelPos[2]);
+  if(Math.abs(rz)>.1) return null;
+  const u=rx/PM_W+.5, v=.5-ry/PM_H;
+  if(u<0||u>1||v<0||v>1) return null;
+  const cx=u*PW,cy2=v*PH;
+  for(const r of hitRegions) if(cx>=r.cx&&cx<=r.cx+r.cw&&cy2>=r.cy&&cy2<=r.cy+r.ch) return{r,u};
+  return null;
+}
+function applyPanelHit(r){
+  if(r.type==='stage') setStage(r.n,document.querySelectorAll('.stbtn')[r.n-1]);
+  if(r.type==='btn'){if(r.k==='reinit')reb();if(r.k==='crystal')crystallise();}
+  drawPanel();
+}
+function dragPanelSlider(sl,u){
+  const norm=Math.max(0,Math.min(1,(u*PW-sl.cx)/sl.cw));
+  const raw=sl.mn+norm*(sl.mx-sl.mn);
+  const v=parseFloat((Math.round(raw/sl.st)*sl.st).toFixed(5));
+  const el=document.getElementById(sl.id);if(!el)return;
+  el.value=Math.max(sl.mn,Math.min(sl.mx,v));
+  const vid=document.getElementById('v-'+sl.id);if(vid)vid.textContent=gv(sl.id).toFixed(sl.st<.01?3:sl.st<1?2:0);
+  if(sl.reb)reb();
+}
+
+// ── GL render ─────────────────────────────────────────────────
+function glRender(proj,view,drawPanel3D){
+  gl.enable(gl.DEPTH_TEST);
+  gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+  gl.useProgram(mainProg);
+  // Grid
+  if(vaoGrid) drawVAO(vaoGrid,gl.LINES,proj,view,I4());
+  // Streamlines
+  if(vaoStreamLines&&vaoStreamLines.n>0) drawVAO(vaoStreamLines,gl.LINES,proj,view,I4());
+  // Trail lines
+  if(vaoTrailLines&&vaoTrailLines.n>0) drawVAO(vaoTrailLines,gl.LINES,proj,view,I4());
+  // Form
+  if(stage===3&&vaoFormBoxes&&vaoFormBoxes.n>0) drawVAO(vaoFormBoxes,gl.TRIANGLES,proj,view,I4());
+  // Agents & human points
+  if(vaoAgents){
+    gl.useProgram(mainProg);
+    gl.bindVertexArray(vaoAgents.vao);
+    gl.uniformMatrix4fv(uProj,false,proj);gl.uniformMatrix4fv(uView,false,view);gl.uniformMatrix4fv(uModel,false,I4());
+    gl.drawArrays(gl.POINTS,0,vaoAgents.n);
+    gl.bindVertexArray(null);
+  }
+  // Panel
+  if(drawPanel3D){
+    gl.useProgram(panelProg);
+    gl.bindTexture(gl.TEXTURE_2D,panelTex);
+    gl.uniform1i(pUTex,0);
+    gl.uniformMatrix4fv(pUProj,false,proj);gl.uniformMatrix4fv(pUView,false,view);gl.uniformMatrix4fv(pUModel,false,panelModelMatrix());
+    gl.bindVertexArray(pqVAO);gl.drawArrays(gl.TRIANGLES,0,6);gl.bindVertexArray(null);
+  }
+}
+
+// Desktop camera (FPS)
+let deskYaw=0,deskPitch=0,deskPos=[0,1.6,4];
+let deskMD=false,deskLX=0,deskLY=0,deskDrag=null,onPanel=false;
+const deskKeys={};
+let deskLastT=performance.now();
+
+canvas.addEventListener('mousedown',e=>{
+  deskMD=true;deskLX=e.clientX;deskLY=e.clientY;
+  if(stage>=2){
+    // Try panel hit
+    const hit=deskRayPanel(e);
+    if(hit){onPanel=true;applyPanelHit(hit.r);if(hit.r.type==='slider')deskDrag={sl:hit.r,u:hit.u};}
+    else onPanel=false;
+  }
+});
+window.addEventListener('mouseup',()=>{deskMD=false;deskDrag=null;onPanel=false;});
+window.addEventListener('mousemove',e=>{
+  if(!deskMD) return;
+  const dx=e.clientX-deskLX,dy=e.clientY-deskLY;deskLX=e.clientX;deskLY=e.clientY;
+  if(deskDrag){const hit=deskRayPanel(e);if(hit){dragPanelSlider(deskDrag.sl,hit.u);drawPanel();}}
+  else if(!onPanel&&stage>=2){deskYaw-=dx*.003;deskPitch=Math.max(-.88,Math.min(.88,deskPitch-dy*.003));}
+});
+canvas.addEventListener('wheel',e=>{if(stage<2)return;const s=gv('hspd')*.05;deskPos[0]+=Math.sin(deskYaw)*Math.cos(deskPitch)*-e.deltaY*s;deskPos[1]+=Math.sin(deskPitch)*-e.deltaY*s;deskPos[2]+=Math.cos(deskYaw)*Math.cos(deskPitch)*-e.deltaY*s;},{passive:true});
+
+function deskRayPanel(e){
+  if(stage<2||xrActive) return null;
+  const rect=canvas.getBoundingClientRect();
+  const nx=((e.clientX-rect.left)/rect.width)*2-1,ny=-((e.clientY-rect.top)/rect.height)*2+1;
+  // Unproject ray
+  const proj=m4pers(Math.PI/2.5,canvas.width/canvas.height,.01,200);
+  const cp=Math.cos(deskPitch),sp=Math.sin(deskPitch),cy=Math.cos(deskYaw),sy2=Math.sin(deskYaw);
+  const fwd=[sy2*cp,sp,-cy*cp];const right=[cy,0,sy2];const up=[0,1,0];
+  // Ray direction from pixel
+  const asp=canvas.width/canvas.height,fov=Math.PI/2.5,f=1/Math.tan(fov/2);
+  const rdx=nx*asp/f,rdy=ny/f,rdz=-1;
+  const wx=rdx*right[0]+rdy*up[0]+rdz*fwd[0];
+  const wy=rdx*right[1]+rdy*up[1]+rdz*fwd[1];
+  const wz=rdx*right[2]+rdy*up[2]+rdz*fwd[2];
+  // Intersect with panel XZ plane (rz=0 in panel space, approximate: z=panelPos[2])
+  const t=(panelPos[2]-deskPos[2])/wz;
+  if(t<.01) return null;
+  const ix=deskPos[0]+wx*t,iy=deskPos[1]+wy*t,iz=deskPos[2]+wz*t;
+  return panelHit(ix,iy,iz);
+}
+
+function deskUpdate(now){
+  const dt=Math.min((now-deskLastT)/1000,.05);deskLastT=now;
+  const spd=gv('hspd')*(deskKeys['ShiftLeft']||deskKeys['ShiftRight']?3:1);
+  const cp=Math.cos(deskPitch),sp=Math.sin(deskPitch),cy=Math.cos(deskYaw),sy2=Math.sin(deskYaw);
+  const mv=spd*dt;
+  if(deskKeys['KeyW']){deskPos[0]+=sy2*cp*mv;deskPos[1]+=sp*mv;deskPos[2]+=-cy*cp*mv;}
+  if(deskKeys['KeyS']){deskPos[0]-=sy2*cp*mv;deskPos[1]-=sp*mv;deskPos[2]+=cy*cp*mv;}
+  if(deskKeys['KeyA']){deskPos[0]-=cy*mv;deskPos[2]-=sy2*mv;}
+  if(deskKeys['KeyD']){deskPos[0]+=cy*mv;deskPos[2]+=sy2*mv;}
+  if(deskKeys['Space']){deskPos[1]+=mv;}if(deskKeys['KeyC']){deskPos[1]-=mv;}
+  u2('st-h',`${deskPos[0].toFixed(1)},${deskPos[1].toFixed(1)},${deskPos[2].toFixed(1)}`);
+}
+
+// ── Canvas2D Stage 1 draw ─────────────────────────────────────
+function draw2D(){
+  const W=canvas.width,H=canvas.height;
+  const ctx2=canvas.getContext('2d');
+  if(!ctx2) return; // WebGL2 context active
+  ctx2.fillStyle='rgba(8,8,15,.2)';ctx2.fillRect(0,0,W,H);
+  const sx=W/DOM,sy=H/DOM;
+  // trails
+  for(const t of trailMap){const a=Math.min(.22,t.s/4*.22);ctx2.beginPath();ctx2.arc(t.x*sx,t.y*sy,2,0,Math.PI*2);ctx2.fillStyle=`rgba(42,184,112,${a})`;ctx2.fill();}
+  // field streamlines
+  if(frameC%Math.max(1,parseInt(gv('fRate')))===0){
+    const op=gv('fOp');
+    const SRCS=[{x:human.x,y:human.y,c:'#4aaaff'},...agents.map(a=>({x:a.x,y:a.y,c:COLS[a.type]}))];
+    for(const src of SRCS){
+      for(let r=0;r<8;r++){
+        const ang=r/8*Math.PI*2;let cx=src.x+Math.cos(ang)*6,cy=src.y+Math.sin(ang)*6;
+        ctx2.beginPath();ctx2.moveTo(cx*sx,cy*sy);
+        for(let s=0;s<55;s++){if(cx<2||cx>DOM-2||cy<2||cy>DOM-2)break;const f=rawF(cx,cy);cx+=f.fx*6;cy+=f.fy*6;ctx2.lineTo(cx*sx,cy*sy);}
+        ctx2.strokeStyle=src.c+Math.round(op*99).toString(16).padStart(2,'0');ctx2.lineWidth=.7;ctx2.stroke();
+      }
+    }
+  }
+  // agents
+  for(const ag of agents){
+    const x=ag.x*sx,y=ag.y*sy,ang=Math.atan2(ag.vy,ag.vx),zs=.5+.8*(ag.z/DOM);
+    ctx2.save();ctx2.translate(x,y);ctx2.rotate(ang);ctx2.scale(zs,zs);
+    if(ag.type==='pulse'){ctx2.beginPath();ctx2.arc(0,0,7,0,Math.PI*2);ctx2.fillStyle=COLS[ag.type];ctx2.fill();}
+    else if(ag.type==='attractor'){ctx2.beginPath();ctx2.moveTo(0,-9);ctx2.lineTo(7,6);ctx2.lineTo(-7,6);ctx2.closePath();ctx2.fillStyle=COLS[ag.type];ctx2.fill();}
+    else{ctx2.beginPath();ctx2.moveTo(8,0);ctx2.lineTo(-5,3.5);ctx2.lineTo(-3,0);ctx2.lineTo(-5,-3.5);ctx2.closePath();ctx2.fillStyle=COLS[ag.type];ctx2.fill();}
+    ctx2.restore();
+  }
+  // human
+  [{h:human,c:'#4aaaff'},{h:human2,c:'#20e0c0'}].forEach(({h,c})=>{
+    const x=h.x*sx,y=h.y*sy;
+    ctx2.strokeStyle=c+'22';ctx2.lineWidth=.5;ctx2.beginPath();ctx2.arc(x,y,gv('spinR')*sx,0,Math.PI*2);ctx2.stroke();
+    ctx2.strokeStyle=c;ctx2.lineWidth=1.4;ctx2.beginPath();ctx2.moveTo(x-11,y);ctx2.lineTo(x+11,y);ctx2.moveTo(x,y-11);ctx2.lineTo(x,y+11);ctx2.stroke();
+    // gaze arrow
+    ctx2.strokeStyle=c;ctx2.lineWidth=2;ctx2.beginPath();ctx2.moveTo(x,y);ctx2.lineTo(x+h.gaze[0]*30*sx,y-h.gaze[2]*30*sy);ctx2.stroke();
+  });
+}
+
+// ── XR ────────────────────────────────────────────────────────
+let xrSession=null,xrRefSpace=null,xrActive=false;
+let xrHandL=null,xrHandR=null,xrPinch=false,xrActiveSl=null;
+const PINCH_D=.026;
+
+function getJoint(hand,frame,rs,name){if(!hand||!hand.joints)return null;const j=hand.joints.get(name);if(!j)return null;const p=frame.getJointPose(j,rs);if(!p)return null;const t=p.transform.position;return[t.x,t.y,t.z];}
+
+function feedHumanXR(headPos,headQuat){
+  const[qx,qy,qz,qw]=headQuat;
+  const gx=2*(qx*qz+qw*qy),gy=2*(qy*qz-qw*qx),gz=1-2*(qx*qx+qy*qy);
+  const gl2=Math.sqrt(gx*gx+gy*gy+gz*gz)||1;
+  human.gaze=[gx/gl2,gy/gl2,gz/gl2];
+  const nx=headPos[0]/4*HALF+HALF,ny=headPos[2]/4*HALF+HALF,nz=headPos[1]/3*HALF+HALF;
+  const spd=gv('hspd');
+  human.vx=(nx-human.x)*spd*.1+human.gaze[0]*spd*.3;
+  human.vy=(ny-human.y)*spd*.1+human.gaze[2]*spd*.3;
+  human.vz=(nz-human.z)*spd*.05;
+  human.x=Math.max(5,Math.min(DOM-5,nx));human.y=Math.max(5,Math.min(DOM-5,ny));human.z=Math.max(5,Math.min(DOM-5,nz));
+  u2('st-h',`XR:${Math.round(human.x)},${Math.round(human.y)},${Math.round(human.z)}`);
+}
+
+// XR frame — pure WebGL2, camera object never read or written
+function xrFrame(ts, frame){
+  xrSession.requestAnimationFrame(xrFrame);
+  try{
+    // sim step
+    const dt=1/60*60;
+    if(!xrActive) return;
+    for(const ag of agents) ag.update(dt);
+    for(let i=trailMap.length-1;i>=0;i--){trailMap[i].s*=1-gv('tEvap')/60;if(trailMap[i].s<.04)trailMap.splice(i,1);}
+    frameC++;
+    if(frameC%parseInt(gv('fRate'))===0) computeField();
+    if(stage===3&&(ts-lastCrystal)>gv('cInt')*1000/60){lastCrystal=ts;buildFieldMassing();}
+
+    const rs=xrRefSpace;
+    const vp2=frame.getViewerPose(rs); if(!vp2) return;
+    const ht=vp2.transform;
+    const hp=[ht.position.x,ht.position.y,ht.position.z];
+    const hq=[ht.orientation.x,ht.orientation.y,ht.orientation.z,ht.orientation.w];
+    feedHumanXR(hp,hq);
+    if(xrNeedsRecentre) recentrePanel(hp,hq);
+
+    // Hand tracking
+    if(xrHandR){
+      const iP=getJoint(xrHandR,frame,rs,'index-finger-tip');
+      const tP=getJoint(xrHandR,frame,rs,'thumb-tip');
+      if(iP&&tP){
+        const mid=[(iP[0]+tP[0])/2,(iP[1]+tP[1])/2,(iP[2]+tP[2])/2];
+        const dist=Math.sqrt((iP[0]-tP[0])**2+(iP[1]-tP[1])**2+(iP[2]-tP[2])**2);
+        const nowP=dist<PINCH_D;
+        if(nowP&&!xrPinch){xrPinch=true;const h=panelHit(...mid);if(h){applyPanelHit(h.r);if(h.r.type==='slider')xrActiveSl={sl:h.r,u:h.u};}}
+        if(!nowP)xrPinch=false;
+        if(xrPinch&&xrActiveSl){const h=panelHit(...mid);if(h){dragPanelSlider(xrActiveSl.sl,h.u);drawPanel();}}
+      }
+    }
+    if(xrHandL){
+      const w=getJoint(xrHandL,frame,rs,'wrist');if(w){let fc=0;['index-finger-tip','middle-finger-tip','ring-finger-tip','pinky-finger-tip'].forEach(jn=>{const p=getJoint(xrHandL,frame,rs,jn);if(p&&Math.sqrt((p[0]-w[0])**2+(p[1]-w[1])**2+(p[2]-w[2])**2)<.075)fc++;});if(fc>=3)xrNeedsRecentre=true;}
+    }
+
+    // Rebuild geometry each frame for animation
+    buildAgentGeom();
+    if(frameC%6===0){buildTrailLines();buildStreamLines();}
+    if(frameC%8===0)drawPanel();
+
+    // Render — pure WebGL2, no Three.js, no camera object touched
+    const glLayer=xrSession.renderState.baseLayer;
+    gl.bindFramebuffer(gl.FRAMEBUFFER,glLayer.framebuffer);
+    for(const view of vp2.views){
+      const vport=glLayer.getViewport(view);
+      gl.viewport(vport.x,vport.y,vport.width,vport.height);
+      gl.scissor(vport.x,vport.y,vport.width,vport.height);
+      gl.enable(gl.SCISSOR_TEST);
+      gl.clearColor(.02,.02,.06,1);
+      gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+      // Use XR projection and view matrices directly as Float32Arrays
+      const proj=new Float32Array(view.projectionMatrix);
+      const viewM=new Float32Array(view.transform.inverse.matrix);
+      glRender(proj,viewM,true);
+    }
+    gl.disable(gl.SCISSOR_TEST);
+  }catch(e){console.error('[xrFrame]',e);}
+}
+
+async function tryXR(){
+  if(!navigator.xr){setXRS('err','No WebXR API');return;}
+  document.getElementById('xrBtn').disabled=true;
+  try{
+    xrSession=await navigator.xr.requestSession('immersive-vr',{requiredFeatures:['hand-tracking','local-floor'],optionalFeatures:['bounded-floor']});
+    await gl.makeXRCompatible();
+    xrSession.updateRenderState({baseLayer:new XRWebGLLayer(xrSession,gl)});
+    xrRefSpace=await xrSession.requestReferenceSpace('local-floor').catch(()=>xrSession.requestReferenceSpace('local'));
+    xrSession.addEventListener('inputsourceschange',e=>{for(const s of e.added)if(s.hand){if(s.handedness==='left')xrHandL=s.hand;else xrHandR=s.hand;}for(const s of e.removed){if(s.handedness==='left')xrHandL=null;else xrHandR=null;}});
+    xrSession.addEventListener('end',()=>{xrActive=false;xrSession=null;xrHandL=null;xrHandR=null;document.getElementById('xrBtn').disabled=false;document.getElementById('xrBadge').style.display='none';setXRS('ok','XR ended — ready');});
+    xrActive=true;xrNeedsRecentre=true;
+    document.getElementById('xrBadge').style.display='inline';
+    setXRS('live','● XR Active — hand tracking');
+    if(stage===1) setStage(2,document.querySelectorAll('.stbtn')[1]);
+    xrSession.requestAnimationFrame(xrFrame);
+  }catch(e){
+    document.getElementById('xrBtn').disabled=false;
+    const pol=e.message&&(e.message.includes('permissions')||e.message.includes('disallowed'));
+    setXRS('err',pol?'WebXR blocked in iframe — save as .html & open in Quest Browser':e.message.slice(0,80));
+  }
+}
+function setXRS(cls,msg){const el=document.getElementById('xr-status');el.className=cls;el.textContent=msg;}
+
+// ── Stage ─────────────────────────────────────────────────────
+function setFM(m,btn){formMode=m;document.querySelectorAll('.ftab').forEach(b=>b.classList.remove('active'));btn.classList.add('active');document.querySelectorAll('.form-param-group').forEach(g=>g.classList.remove('visible'));document.getElementById('fpg-'+m).classList.add('visible');}
+function setStage(s,btn){
+  stage=s;
+  document.querySelectorAll('.stbtn').forEach(b=>b.classList.remove('active'));if(btn)btn.classList.add('active');
+  // Reset camera to a good starting position per stage
+  if(s===1){deskPos=[0,14,0];deskPitch=-Math.PI/2;deskYaw=0;} // top-down for 2D view
+  if(s===2){deskPos=[0,1.6,4];deskPitch=0;deskYaw=0;}          // eye level FPS
+  if(s===3){deskPos=[0,2,5];deskPitch=-.15;deskYaw=0;buildFieldMassing();lastCrystal=performance.now();}
+  buildStreamLines();
+  drawPanel();
+}
+
+// ── Main loop (desktop) ───────────────────────────────────────
+const STEP=1/60;
+let keys2={};
+window.addEventListener('keydown',e=>{keys2[e.code]=true;deskKeys[e.code]=true;if(['ArrowUp','ArrowDown','Space'].includes(e.code))e.preventDefault();
+  // Arrow keys = human1 desktop movement
+  if(stage===1){const sp=gv('hspd')*.2;if(e.code==='ArrowUp')human.vy-=sp;if(e.code==='ArrowDown')human.vy+=sp;if(e.code==='ArrowLeft')human.vx-=sp;if(e.code==='ArrowRight')human.vx+=sp;if(e.code==='KeyQ')human.vz-=sp*.8;if(e.code==='KeyE')human.vz+=sp*.8;}
+});
+window.addEventListener('keyup',e=>{keys2[e.code]=false;deskKeys[e.code]=false;});
+
+function resize(){
+  const m=document.getElementById('main');
+  canvas.width=m.clientWidth;canvas.height=m.clientHeight-document.getElementById('topbar').offsetHeight-document.getElementById('statsBar').offsetHeight;
+}
+
+function mainLoop(ts){
+  requestAnimationFrame(mainLoop);
+  if(xrActive) return; // XR loop handles itself
+  const rawDt=(ts-lastT)/1000;lastT=ts;
+  if(rawDt>0&&rawDt<.5)fps=Math.round(.93*fps+.07*(1/rawDt));
+  u2('st-fps',fps);
+  const speed=gv('spd');accumT+=rawDt*speed;
+  while(accumT>=STEP){
+    accumT-=STEP;const dt=STEP*60;
+    if(!xrActive){
+      // Desktop human1 movement
+      stepHuman(human,STEP);stepHuman(human2,STEP);
+    }
+    for(const ag of agents)ag.update(dt);
+    for(let i=trailMap.length-1;i>=0;i--){trailMap[i].s*=(1-gv('tEvap'));if(trailMap[i].s<.04)trailMap.splice(i,1);}
+    while(trailMap.length>600)trailMap.shift();
+    frameC++;
+    if(frameC%parseInt(gv('fRate'))===0)computeField();
+    if(stage===3&&(ts-lastCrystal)>gv('cInt')*1000/60){lastCrystal=ts;buildFieldMassing();}
+  }
+  u2('st-tr',trailMap.length);u2('st-ag',agents.length);
+
+  if(frameC%6===0){buildTrailLines();buildStreamLines();}
+  if(frameC%8===0){drawPanel();u2('st-h',`${Math.round(human.x)},${Math.round(human.y)}`);}
+
+  deskUpdate(ts);
+  buildAgentGeom();
+  if(stage===1){
+    // Stage 1: orthographic top-down view — field lines clearly visible
+    gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+    gl.viewport(0,0,canvas.width,canvas.height);
+    gl.clearColor(.03,.03,.09,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+    // Orthographic-ish: use very narrow perspective from high above
+    const aspect=canvas.width/Math.max(canvas.height,1);
+    const proj=m4pers(.18,aspect,.1,300); // narrow FOV = near-orthographic
+    // Camera straight above looking down
+    const view=m4lookAt(0,30,0, 0,0,0); // eye at y=30, looking at origin
+    // Draw grid + streamlines + agents (no panel in Stage 1)
+    glRender(proj,view,false);
+    // Overlay: human spin radius circle (draw as GL line loop)
+    // already included in streamlines via humanSrc
+  } else {
+    gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+    gl.viewport(0,0,canvas.width,canvas.height);
+    gl.clearColor(.03,.03,.09,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+    const aspect=canvas.width/canvas.height;
+    const proj=m4pers(Math.PI/2.5,aspect,.01,200);
+    const cp=Math.cos(deskPitch),sp2=Math.sin(deskPitch),cy=Math.cos(deskYaw),sy2=Math.sin(deskYaw);
+    const tx=deskPos[0]+sy2*cp*.001,ty=deskPos[1]+sp2*.001,tz=deskPos[2]-cy*cp*.001;
+    const view=m4lookAt(deskPos[0],deskPos[1],deskPos[2],tx,ty,tz);
+    glRender(proj,view,stage>=2);
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────
+resize();
+window.addEventListener('resize',resize);
+vaoGrid=buildGrid();
+reb();computeField();buildStreamLines();drawPanel();
+lastT=performance.now();
+requestAnimationFrame(mainLoop);
+
+// XR support check
+(async()=>{
+  try{
+    if(!navigator.xr)throw new Error('no-xr');
+    const ok=await navigator.xr.isSessionSupported('immersive-vr');
+    if(ok){document.getElementById('xrBtn').disabled=false;setXRS('ok','WebXR ready — Quest 3 detected');}
+    else{document.getElementById('xrBtn').disabled=true;setXRS('','No VR device — desktop mode');}
+  }catch(e){
+    document.getElementById('xrBtn').disabled=true;
+    const pol=e.message&&(e.message.includes('permissions')||e.message.includes('disallowed'));
+    setXRS(pol?'err':'','WebXR '+(pol?'blocked (iframe) — save .html & open in Quest Browser':'unavailable'));
+  }
+})();
+</script>
+</body>
+</html>
