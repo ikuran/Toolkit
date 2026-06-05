@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>ABST VR — Panel View</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0e;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;min-height:100vh;gap:8px;padding:12px;
+  font-family:'Courier New',monospace}
+.lbl{color:#2a2a4a;font-size:8px;letter-spacing:.14em;text-transform:uppercase}
+</style>
+</head>
+<body>
+<div class="lbl">ABST v10 · Quest 3 · Stage 2 · Panel önde 30° tilt · Hand tracking</div>
+<canvas id="c" width="1280" height="720"></canvas>
+<script>
+const C=document.getElementById('c'),ctx=C.getContext('2d');
+const W=1280,H=720;
+
+// ── Field sim ──
+const DOMAIN=500;
+const agents=[
+  {type:'charge',  x:155,y:185,vx:1.1,vy:0.6,col:'#4a6ee0'},
+  {type:'charge',  x:310,y:145,vx:-0.9,vy:1.0,col:'#4a6ee0'},
+  {type:'charge',  x:255,y:340,vx:0.4,vy:-1.1,col:'#4a6ee0'},
+  {type:'charge',  x:415,y:275,vx:-0.6,vy:0.7,col:'#4a6ee0'},
+  {type:'charge',  x:190,y:400,vx:1.3,vy:0.3,col:'#4a6ee0'},
+  {type:'attractor',x:380,y:310,vx:0.2,vy:0.2,col:'#e07a2a'},
+  {type:'trail',   x:130,y:270,vx:1.6,vy:0.7,col:'#2a9a5a'},
+  {type:'trail',   x:345,y:195,vx:-1.0,vy:1.1,col:'#2a9a5a'},
+  {type:'pulse',   x:215,y:420,vx:0.5,vy:-0.5,col:'#f0c040'},
+  {type:'pulse',   x:440,y:160,vx:-0.3,vy:0.8,col:'#f0c040'},
+];
+const human={x:242,y:258,vx:1.8,vy:0.7};
+const spinR=78;
+
+function rawF(px,py){
+  let fx=0,fy=0;
+  const hdx=px-human.x,hdy=py-human.y,hd=Math.sqrt(hdx*hdx+hdy*hdy)||0.1;
+  const hm=11*1.2/(1+(hd/9)*(hd/9));
+  fx+=hdx/hd*hm;fy+=hdy/hd*hm;
+  if(hd<spinR){const dc=Math.exp(-hd/4),vl=Math.sqrt(human.vx**2+human.vy**2)||0.01;
+    fx+=(-human.vy/vl)*10*dc;fy+=(human.vx/vl)*10*dc;}
+  for(const ag of agents){
+    const dx=px-ag.x,dy=py-ag.y,d=Math.sqrt(dx*dx+dy*dy)||0.1;
+    const str=ag.type==='attractor'?36:ag.type==='pulse'?8:9;
+    const dec=ag.type==='attractor'?12:9;
+    fx+=dx/d*str/(1+(d/dec)*(d/dec));
+    fy+=dy/d*str/(1+(d/dec)*(d/dec));
+  }
+  const mag=Math.sqrt(fx*fx+fy*fy)||0.001;
+  return{fx:fx/mag,fy:fy/mag,mag};
+}
+
+// ── 1. ENVIRONMENT ────────────────────────────────────────────
+const HOR=H*0.50;
+// Sky
+const sky=ctx.createLinearGradient(0,0,0,HOR);
+sky.addColorStop(0,'#e8e8e6');sky.addColorStop(1,'#f0f0ee');
+ctx.fillStyle=sky;ctx.fillRect(0,0,W,HOR);
+// Ground
+const gnd=ctx.createLinearGradient(0,HOR,0,H);
+gnd.addColorStop(0,'#c4c4c0');gnd.addColorStop(1,'#d0d0cc');
+ctx.fillStyle=gnd;ctx.fillRect(0,HOR,W,H-HOR);
+// Grid
+ctx.strokeStyle='rgba(155,155,150,0.38)';ctx.lineWidth=0.4;
+for(let i=-10;i<=10;i++){ctx.beginPath();ctx.moveTo(W/2+i*(W/10),HOR);ctx.lineTo(W/2+i*W,H);ctx.stroke();}
+for(let j=0;j<8;j++){const t=j/7,gy=HOR+(H-HOR)*t*t,xL=W/2-(W/2)*(t*0.88),xR=W/2+(W/2)*(t*0.88);
+  ctx.beginPath();ctx.moveTo(xL,gy);ctx.lineTo(xR,gy);ctx.stroke();}
+
+// ── 2. FIELD LINES ────────────────────────────────────────────
+const YAW=Math.PI*0.05,FOCAL=500;
+function scXZ(dx,dy){return{x:(dx/DOMAIN-0.5)*18,z:(dy/DOMAIN-0.5)*18};}
+function proj(wx,wy,wz){
+  const cs=Math.cos(-YAW),sn=Math.sin(-YAW);
+  const rx=wx*cs-wz*sn,rz=wx*sn+wz*cs;
+  const d=rz+8;if(d<0.1)return null;
+  return{x:W/2+(rx/d)*FOCAL,y:HOR+(-(wy-1.6)/d)*FOCAL,d};
+}
+const agCols={charge:'hsla(225,55%,50%,0.28)',trail:'hsla(150,50%,40%,0.28)',
+  attractor:'hsla(20,65%,50%,0.28)',pulse:'hsla(40,65%,50%,0.28)',human:'hsla(205,60%,50%,0.40)'};
+for(const ag of [...agents,{type:'human',x:human.x,y:human.y}]){
+  const col=agCols[ag.type]||'hsla(220,50%,50%,0.2)';
+  const nR=ag.type==='human'?10:ag.type==='attractor'?12:8;
+  for(let r=0;r<nR;r++){
+    let px=ag.x+Math.cos(r/nR*Math.PI*2)*8,py=ag.y+Math.sin(r/nR*Math.PI*2)*8;
+    const s0=scXZ(px,py),p0=proj(s0.x,0,s0.z);if(!p0)continue;
+    ctx.beginPath();ctx.moveTo(p0.x,p0.y);let ok=false;
+    for(let i=0;i<38;i++){
+      const f=rawF(px,py);px+=f.fx*7;py+=f.fy*7;
+      if(px<5||px>495||py<5||py>495)break;
+      const s=scXZ(px,py),p=proj(s.x,Math.sin(i*0.28)*f.mag*0.06,s.z);
+      if(!p||p.x<-200||p.x>W+200||p.y<0||p.y>H)break;
+      ctx.lineTo(p.x,p.y);ok=true;
+    }
+    if(ok){ctx.strokeStyle=col;ctx.lineWidth=0.7;ctx.stroke();}
+  }
+}
+// Ajanlar
+for(const ag of agents){
+  const s=scXZ(ag.x,ag.y),p=proj(s.x,0,s.z);
+  if(!p||p.y>HOR*0.98||p.y<HOR*0.05||p.x<0||p.x>W)continue;
+  const sz=Math.max(2,7/p.d);ctx.fillStyle=ag.col;
+  if(ag.type==='attractor'){ctx.beginPath();ctx.moveTo(p.x,p.y-sz*1.3);ctx.lineTo(p.x+sz,p.y+sz);ctx.lineTo(p.x-sz,p.y+sz);ctx.closePath();ctx.fill();}
+  else if(ag.type==='pulse'){ctx.beginPath();ctx.arc(p.x,p.y,sz,0,Math.PI*2);ctx.fill();}
+  else{const ang=Math.atan2(ag.vy||0,ag.vx||0);ctx.save();ctx.translate(p.x,p.y);ctx.rotate(ang);
+    ctx.beginPath();ctx.moveTo(sz,0);ctx.lineTo(-sz*.7,sz*.5);ctx.lineTo(-sz*.3,0);ctx.lineTo(-sz*.7,-sz*.5);ctx.closePath();ctx.fill();ctx.restore();}
+}
+// Human
+{const s=scXZ(human.x,human.y),p=proj(s.x,0,s.z);
+if(p){const sr=spinR/DOMAIN*18*(FOCAL/Math.max(p.d,1));
+  ctx.strokeStyle='rgba(29,113,201,0.14)';ctx.lineWidth=0.8;ctx.beginPath();ctx.arc(p.x,p.y,sr,0,Math.PI*2);ctx.stroke();
+  ctx.strokeStyle='#1d71c9';ctx.lineWidth=1.8;
+  ctx.beginPath();ctx.moveTo(p.x-12,p.y);ctx.lineTo(p.x+12,p.y);ctx.moveTo(p.x,p.y-12);ctx.lineTo(p.x,p.y+12);ctx.stroke();
+  ctx.beginPath();ctx.arc(p.x,p.y,4.5,0,Math.PI*2);ctx.stroke();}}
+
+// ── 3. PANEL — YATAY, 30° tilt, önde ve ortada ───────────────
+// Panel panel tam önde, hafif aşağıda, 30° öne eğik
+// Perspektif: panel yatay düzlemde 30° tilted = altta daha yakın
+const TILT=30*Math.PI/180; // 30 derece
+const PW_world=1.0, PD_world=0.55; // metre
+
+// Panel dört köşesi — world space (önde, bel hizası)
+// Yatay panel + 30° tilt: üst kenar daha uzakta (y+), alt kenar daha yakın
+const eyeZ=-8; // kamera z pozisyonu (sahne arkası)
+const panCX=0, panCY=0.9, panCZ=eyeZ+0.7; // panel merkezi
+
+// Tilt = üst kenarlar biraz yukarı, alt kenarlar biraz aşağı
+const tiltY=Math.sin(TILT)*PD_world/2; // y offset
+const tiltZ=Math.cos(TILT)*PD_world/2; // z offset
+
+// 4 köşe: [TL, TR, BL, BR] (top=uzak, bottom=yakın)
+const corners=[
+  // üst-sol, üst-sağ (uzakta, yüksekte)
+  {x:panCX-PW_world/2, y:panCY+tiltY, z:panCZ-tiltZ},
+  {x:panCX+PW_world/2, y:panCY+tiltY, z:panCZ-tiltZ},
+  // alt-sol, alt-sağ (yakında, alçakta)
+  {x:panCX-PW_world/2, y:panCY-tiltY, z:panCZ+tiltZ},
+  {x:panCX+PW_world/2, y:panCY-tiltY, z:panCZ+tiltZ},
+];
+
+function projW(wx,wy,wz){
+  const cs=Math.cos(-YAW),sn=Math.sin(-YAW);
+  const rx=wx*cs-wz*sn,rz=wx*sn+wz*cs;
+  const dz=rz-eyeZ; if(dz<0.05)return null;
+  return{x:W/2+(rx/dz)*FOCAL, y:HOR+(-(wy-1.6)/dz)*FOCAL};
+}
+
+const ps=corners.map(c=>projW(c.x,c.y,c.z));
+if(ps.every(p=>p)){
+  // Panel clip region
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(ps[0].x,ps[0].y);
+  ctx.lineTo(ps[1].x,ps[1].y);
+  ctx.lineTo(ps[3].x,ps[3].y);
+  ctx.lineTo(ps[2].x,ps[2].y);
+  ctx.closePath();
+
+  // Shadow
+  ctx.save();ctx.globalAlpha=0.18;ctx.filter='blur(14px)';ctx.fillStyle='#000018';ctx.fill();ctx.restore();ctx.filter='none';
+
+  // Clip to panel shape
+  ctx.clip();
+
+  // ── Sol: field mini render (field lines mini) ──────────────
+  const FW=0.42; // field 42% genişlik
+  const fieldFrac=FW/PW_world;
+  // Panel sol kenar → field/param ayırıcı projeksiyon
+  const splitTL={x:panCX-PW_world/2+PW_world*fieldFrac, y:panCY+tiltY, z:panCZ-tiltZ};
+  const splitBL={x:panCX-PW_world/2+PW_world*fieldFrac, y:panCY-tiltY, z:panCZ+tiltZ};
+  const pSplitT=projW(splitTL.x,splitTL.y,splitTL.z);
+  const pSplitB=projW(splitBL.x,splitBL.y,splitBL.z);
+
+  // Field area fill
+  ctx.beginPath();
+  ctx.moveTo(ps[0].x,ps[0].y);
+  ctx.lineTo(pSplitT.x,pSplitT.y);
+  ctx.lineTo(pSplitB.x,pSplitB.y);
+  ctx.lineTo(ps[2].x,ps[2].y);
+  ctx.closePath();
+  ctx.fillStyle='#f0f0ee';ctx.fill();
+
+  // Draw field canvas mini — using 2D canvas transform trick
+  // Bilinear transform: TL, TR, BL, BR → project
+  function drawFieldInPanel(){
+    // Mini field simulation on temp canvas
+    const fc=document.createElement('canvas');fc.width=300;fc.height=500;
+    const fctx=fc.getContext('2d');
+    const fSX=300/DOMAIN,fSY=500/DOMAIN;
+    fctx.fillStyle='#f2f2f0';fctx.fillRect(0,0,300,500);
+    // Streamlines
+    for(const ag of [...agents,{type:'human',x:human.x,y:human.y}]){
+      const h={charge:225,trail:150,attractor:20,pulse:40,human:205}[ag.type]||220;
+      const nR=ag.type==='human'?10:ag.type==='attractor'?12:8;
+      for(let r=0;r<nR;r++){
+        let px=ag.x+Math.cos(r/nR*Math.PI*2)*8,py=ag.y+Math.sin(r/nR*Math.PI*2)*8;
+        fctx.beginPath();fctx.moveTo(px*fSX,py*fSY);
+        for(let i=0;i<50;i++){const f=rawF(px,py);px+=f.fx*6;py+=f.fy*6;
+          if(px<0||px>DOMAIN||py<0||py>DOMAIN)break;fctx.lineTo(px*fSX,py*fSY);}
+        const al=ag.type==='human'?0.52:0.35;
+        fctx.strokeStyle=`hsla(${h},52%,48%,${al})`;fctx.lineWidth=1.2;fctx.stroke();
+      }
+    }
+    // Spin radius
+    fctx.strokeStyle='rgba(29,113,201,0.16)';fctx.lineWidth=0.8;
+    fctx.beginPath();fctx.arc(human.x*fSX,human.y*fSY,spinR*fSX,0,Math.PI*2);fctx.stroke();
+    // Ajanlar
+    for(const ag of agents){
+      fctx.fillStyle=ag.col;
+      if(ag.type==='attractor'){fctx.beginPath();fctx.moveTo(ag.x*fSX,(ag.y-9)*fSY);fctx.lineTo((ag.x+7)*fSX,(ag.y+6)*fSY);fctx.lineTo((ag.x-7)*fSX,(ag.y+6)*fSY);fctx.closePath();fctx.fill();}
+      else if(ag.type==='pulse'){fctx.beginPath();fctx.arc(ag.x*fSX,ag.y*fSY,6,0,Math.PI*2);fctx.fill();}
+      else{fctx.save();fctx.translate(ag.x*fSX,ag.y*fSY);fctx.beginPath();fctx.moveTo(8,0);fctx.lineTo(-5,4);fctx.lineTo(-3,0);fctx.lineTo(-5,-4);fctx.closePath();fctx.fill();fctx.restore();}
+    }
+    fctx.strokeStyle='#1d71c9';fctx.lineWidth=1.8;
+    fctx.beginPath();fctx.moveTo((human.x-11)*fSX,human.y*fSY);fctx.lineTo((human.x+11)*fSX,human.y*fSY);
+    fctx.moveTo(human.x*fSX,(human.y-11)*fSY);fctx.lineTo(human.x*fSX,(human.y+11)*fSY);fctx.stroke();
+    fctx.beginPath();fctx.arc(human.x*fSX,human.y*fSY,5,0,Math.PI*2);fctx.stroke();
+    return fc;
+  }
+  const fc=drawFieldInPanel();
+
+  // Perspektif blit — field canvas'ı panel sol yarısına çiz
+  // Approximate with a simple drawImage + transform
+  const fx0=ps[0].x,fy0=ps[0].y; // TL
+  const fx1=pSplitT.x,fy1=pSplitT.y; // TR
+  const fx2=ps[2].x,fy2=ps[2].y; // BL
+  const fx3=pSplitB.x,fy3=pSplitB.y; // BR
+  // 4-point drawImage hack: two triangles
+  // Simplified: just draw the canvas scaled to the bounding box with perspective suggestion
+  const fxMin=Math.min(fx0,fx1,fx2,fx3),fxMax=Math.max(fx0,fx1,fx2,fx3);
+  const fyMin=Math.min(fy0,fy1,fy2,fy3),fyMax=Math.max(fy0,fy1,fy2,fy3);
+  // Use setTransform for perspective approximation
+  // Transform: map rect (0,0,w,h) → quadrilateral TL,TR,BL,BR
+  const tw=fc.width,th=fc.height;
+  // Top edge (far): shorter (perspective)
+  const topW=Math.hypot(fx1-fx0,fy1-fy0);
+  const botW=Math.hypot(fx3-fx2,fy3-fy2);
+  const topMidX=(fx0+fx1)/2,topMidY=(fy0+fy1)/2;
+  const botMidX=(fx2+fx3)/2,botMidY=(fy2+fy3)/2;
+
+  // Draw via canvas 2D transform approximation
+  ctx.save();
+  const ang=Math.atan2(botMidY-topMidY,botMidX-topMidX);
+  const panH=Math.hypot(botMidX-topMidX,botMidY-topMidY);
+  ctx.transform(
+    (botW/tw)*Math.cos(Math.atan2(fy3-fy2,fx3-fx2)),
+    (botW/tw)*Math.sin(Math.atan2(fy3-fy2,fx3-fx2)),
+    (panH/th)*Math.cos(ang+Math.PI/2),
+    (panH/th)*Math.sin(ang+Math.PI/2),
+    fx2,fy2
+  );
+  ctx.globalAlpha=0.92;
+  ctx.drawImage(fc,0,0);
+  ctx.restore();
+
+  // ── Sağ: Sidebar replica ───────────────────────────────────
+  // Param panel arka plan
+  ctx.beginPath();
+  ctx.moveTo(pSplitT.x,pSplitT.y);ctx.lineTo(ps[1].x,ps[1].y);
+  ctx.lineTo(ps[3].x,ps[3].y);ctx.lineTo(pSplitB.x,pSplitB.y);ctx.closePath();
+  ctx.fillStyle='rgba(10,10,20,0.93)';ctx.fill();
+
+  // Param canvas
+  const pc=document.createElement('canvas');pc.width=420;pc.height=700;
+  const pctx=pc.getContext('2d');
+  pctx.fillStyle='#0c0c16';pctx.fillRect(0,0,420,700);
+
+  // Header
+  pctx.fillStyle='#10101e';pctx.fillRect(0,0,420,20);
+  pctx.fillStyle='#7a9aee';pctx.font='bold 9px Arial';
+  pctx.fillText('ABST — Parameters',6,14);
+  pctx.fillStyle='#3a3a5a';pctx.font='7px Arial';pctx.textAlign='right';
+  pctx.fillText('S2 · E: 1.34',414,14);pctx.textAlign='left';
+
+  let py2=22;
+  function sec2(label,badge,bc,fc2,lc){
+    if(lc){pctx.fillStyle=lc+'18';pctx.fillRect(0,py2,420,13);}
+    pctx.fillStyle=bc;pctx.fillRect(4,py2+1,18,11);
+    pctx.fillStyle=fc2;pctx.font='bold 6px Arial';pctx.textAlign='center';
+    pctx.fillText(badge,13,py2+9);pctx.textAlign='left';
+    pctx.fillStyle='#808090';pctx.font='bold 7px Arial';
+    pctx.fillText(label,26,py2+9);
+    if(lc){pctx.fillStyle=lc;pctx.fillRect(0,py2,2,13);}
+    py2+=14;
+  }
+  function pr2(label,val,pct,cc){
+    pctx.fillStyle='#808090';pctx.font='8px Arial';
+    pctx.fillText(label,6,py2+7);
+    pctx.fillStyle='#c0c0d0';pctx.textAlign='right';
+    pctx.fillText(val,414,py2+7);pctx.textAlign='left';
+    pctx.fillStyle='#181828';pctx.fillRect(6,py2+9,408,3);
+    pctx.fillStyle=cc||'#3a4a6a';pctx.fillRect(6,py2+9,Math.round(408*pct),3);
+    py2+=15;
+  }
+  function div2(){pctx.fillStyle='#141420';pctx.fillRect(0,py2,420,1);py2+=3;}
+  function tog2(label,on){
+    pctx.fillStyle='#808090';pctx.font='8px Arial';pctx.fillText(label,6,py2+7);
+    pctx.fillStyle=on?'#1a4fd6':'#252535';pctx.fillRect(392,py2,22,10);
+    pctx.fillStyle='#fff';pctx.fillRect(on?406:394,py2+1,8,8);py2+=13;
+  }
+
+  sec2('Temporal','T','#201408','#c8a840',null);
+  pr2('Simulation speed','1.00×',0.27);
+  pr2('Crystallisation interval','10s',0.25);
+  tog2('Pause',false);div2();
+
+  sec2('First-Person','FPS','#081428','#4a8aee',null);
+  pr2('Body movement speed [J]','2.0',0.22,'#5ec49a');
+  pr2('Attentional rotation [D]','10',0.38,'#7a9aee');
+  pr2('Perceptual reach [D]','80',0.31,'#7a9aee');
+  pr2('Perceptual falloff [D]','4.0',0.24,'#7a9aee');div2();
+
+  sec2('Shared flocking','FL','#0a1a18','#2a8a5a',null);
+  pr2('Perceptual boundary [E]','85',0.34,'#88c8ee');
+  pr2('Vertical freedom','0.60',0.28);
+  pr2('Boundary strength','8',0.37);div2();
+
+  sec2('Charge','C','#0a1030','#4a5aaa','#1a244a');
+  pr2('Count','3',0.25);pr2('Max velocity','2.0',0.17);
+  pr2('Field imprint intensity [B]','9',0.34,'#5ec49a');
+  pr2('Influence locality [B]','9',0.30,'#5ec49a');
+  pr2('Clustering pull [C]','0.018',0.30,'#f0c040');div2();
+
+  sec2('Pulse','P','#201008','#c88a28','#3a2808');
+  pr2('Count','2',0.25);
+  pr2('Temporal pulsation [G]','1.00',0.67,'#f0c060');
+  pr2('Rhythm frequency [G]','0.012',0.14,'#f0c060');div2();
+
+  sec2('Trail','TR','#081808','#2a8a4a','#083a18');
+  pr2('Count','1',0.17);
+  pr2('Movement trace weight [F]','4.0',0.29,'#c88aee');
+  pr2('Trace dissolution rate [I]','0.012',0.14,'#e07a7a');div2();
+
+  sec2('Attractor','AT','#200808','#c84a2a','#3a0808');
+  pr2('Count','1',0.25);pr2('Multiplier','4.0',0.22);
+  pr2('Spiral tendency [B]','0.22',0.28,'#5ec49a');div2();
+
+  sec2('Field display','RF','#101010','#5a5a5a',null);
+  pr2('Field visibility [visual]','0.72',0.68,'#606070');
+  tog2('Show field lines',true);div2();
+
+  sec2('Field reading — Stage 3','3','#080e18','#4a7aaa',null);
+  // Mod tabs
+  ['Field\nMassing','Rheotomic\nSurfaces','Meta-\nball'].forEach((m,i)=>{
+    const tw2=136,active=i===0;
+    pctx.fillStyle=active?'#1a3a6a':'#12121e';
+    pctx.fillRect(2+i*tw2,py2,tw2-2,20);
+    if(active){pctx.strokeStyle='#3a6ad6';pctx.lineWidth=1;pctx.strokeRect(2+i*tw2,py2,tw2-2,20);}
+    pctx.fillStyle=active?'#7a9aee':'#4a4a6a';
+    pctx.font=(active?'bold ':'')+'7px Arial';pctx.textAlign='center';
+    m.split('\n').forEach((l,li)=>pctx.fillText(l,2+i*tw2+tw2/2-1,py2+7+li*8));
+  });
+  pctx.textAlign='left';py2+=23;
+
+  pr2('Voxel grid size','18',0.60);
+  pr2('Propagation depth [I]','4',0.17,'#e07a7a');
+  pr2('Activation rule [H]','3',0.25,'#f0a860');
+  pr2('Satisfaction threshold [I]','0.36',0.34,'#e07a7a');
+  pr2('Vertical layers','4',0.43);
+  pr2('Agent proximity boost [C]','1.5',0.30,'#f0c040');div2();
+
+  // Butonlar
+  pctx.fillStyle='#1a3a6a';pctx.fillRect(6,py2,200,18);
+  pctx.fillStyle='#0a3a1a';pctx.fillRect(214,py2,200,18);
+  pctx.fillStyle='#7a9aee';pctx.font='bold 8px Arial';pctx.textAlign='center';
+  pctx.fillText('Reinitialise',106,py2+12);
+  pctx.fillStyle='#5aee9a';pctx.fillText('Crystallise',314,py2+12);
+  pctx.textAlign='left';
+
+  // Param canvas'ı panel sağ yarısına çiz — perspektif transform
+  const ptw=pc.width,pth=pc.height;
+  const px0=pSplitT.x,py0=pSplitT.y;
+  const px1=ps[1].x,py1=ps[1].y;
+  const px2=pSplitB.x,py2b=pSplitB.y;
+  const px3=ps[3].x,py3=ps[3].y;
+  const pBotW=Math.hypot(px3-px2,py3-py2b);
+  const pAng=Math.atan2(py3-py2b,px3-px2);
+  const pHeight=Math.hypot((px2+px3)/2-( px0+px1)/2,(py2b+py3)/2-(py0+py1)/2);
+  const pHeightAng=Math.atan2((py2b+py3)/2-(py0+py1)/2,(px2+px3)/2-(px0+px1)/2);
+  ctx.save();
+  ctx.transform(
+    (pBotW/ptw)*Math.cos(pAng),(pBotW/ptw)*Math.sin(pAng),
+    (pHeight/pth)*Math.cos(pHeightAng),(pHeight/pth)*Math.sin(pHeightAng),
+    px2,py2b
+  );
+  ctx.globalAlpha=0.96;ctx.drawImage(pc,0,0);
+  ctx.restore();
+
+  ctx.restore(); // unclip
+
+  // Panel border
+  ctx.save();
+  ctx.beginPath();ctx.moveTo(ps[0].x,ps[0].y);ctx.lineTo(ps[1].x,ps[1].y);
+  ctx.lineTo(ps[3].x,ps[3].y);ctx.lineTo(ps[2].x,ps[2].y);ctx.closePath();
+  ctx.strokeStyle='rgba(26,79,214,0.75)';ctx.lineWidth=1.5;ctx.stroke();
+
+  // Orta çizgi
+  ctx.beginPath();ctx.moveTo(pSplitT.x,pSplitT.y);ctx.lineTo(pSplitB.x,pSplitB.y);
+  ctx.strokeStyle='rgba(26,79,214,0.4)';ctx.lineWidth=1;ctx.stroke();
+
+  // Köşe bracket'lar
+  const bk=14;ctx.strokeStyle='rgba(122,154,238,0.88)';ctx.lineWidth=2;
+  [[ps[0].x,ps[0].y,1,1],[ps[1].x,ps[1].y,-1,1],[ps[2].x,ps[2].y,1,-1],[ps[3].x,ps[3].y,-1,-1]].forEach(([bx,by,sx,sy])=>{
+    ctx.beginPath();ctx.moveTo(bx+sx*bk,by);ctx.lineTo(bx,by);ctx.lineTo(bx,by+sy*bk);ctx.stroke();
+  });
+
+  // Panel glow
+  ctx.globalAlpha=0.08;ctx.filter='blur(10px)';ctx.lineWidth=10;
+  ctx.strokeStyle='#3a6aee';ctx.stroke();
+  ctx.restore();ctx.filter='none';
+}
+
+// ── 4. HANDS ─────────────────────────────────────────────────
+function hand(cx,cy,isR,pinch){
+  ctx.save();
+  ctx.strokeStyle=isR?'rgba(29,113,201,0.72)':'rgba(13,122,95,0.62)';
+  ctx.fillStyle=isR?'rgba(29,113,201,0.09)':'rgba(13,122,95,0.08)';
+  ctx.lineWidth=2;
+  ctx.beginPath();ctx.ellipse(cx,cy,30,19,isR?-0.15:0.15,0,Math.PI*2);ctx.fill();ctx.stroke();
+  const fings=pinch?[[-10,-42],[0,-46],[13,-42],[21,-28]]:[[- 12,-50],[0,-55],[14,-50],[22,-32]];
+  fings.forEach(([dx,dy])=>{
+    ctx.beginPath();ctx.moveTo(cx+(isR?1:-1)*dx*0.5,cy-6);
+    ctx.quadraticCurveTo(cx+(isR?1:-1)*dx*0.7,cy+dy*0.35,cx+(isR?1:-1)*dx,cy+dy*0.72);ctx.stroke();
+  });
+  ctx.beginPath();ctx.moveTo(cx+(isR?-30:30),cy);ctx.quadraticCurveTo(cx+(isR?-36:36),cy-14,cx+(isR?-34:34),cy-24);ctx.stroke();
+  if(pinch){const px=cx+(isR?18:-18),py=cy-36;
+    const g=ctx.createRadialGradient(px,py,0,px,py,20);
+    g.addColorStop(0,'rgba(122,154,238,0.38)');g.addColorStop(1,'rgba(122,154,238,0)');
+    ctx.fillStyle=g;ctx.beginPath();ctx.arc(px,py,20,0,Math.PI*2);ctx.fill();}
+  ctx.restore();
+}
+hand(W*0.25,H*0.78,false,false);
+hand(W*0.60,H*0.75,true,true);
+
+// Ray — sağ elden panele
+const hpx=W*0.60+18,hpy=H*0.75-36;
+// Panel orta noktası
+const panMid=projW(panCX,panCY,panCZ);
+if(panMid){
+  ctx.strokeStyle='rgba(122,154,238,0.22)';ctx.lineWidth=0.8;ctx.setLineDash([3,5]);
+  ctx.beginPath();ctx.moveTo(hpx,hpy);ctx.lineTo(panMid.x,panMid.y);ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+// ── 5. HUD ────────────────────────────────────────────────────
+ctx.fillStyle='rgba(0,0,0,0.48)';ctx.fillRect(0,0,W,24);
+ctx.fillStyle='#7a9aee';ctx.font='bold 10px Courier New';ctx.textAlign='left';
+ctx.fillText('ABST v10  ·  Stage 2 — Volumetric Field  ·  Stratified / Layered',10,16);
+ctx.fillStyle='#3a4a7a';ctx.textAlign='right';
+ctx.fillText('Quest 3  ·  Hand Tracking  ·  96°  ·  Session: 08:24  ·  Field E: 1.34',W-10,16);
+ctx.fillStyle='rgba(0,0,0,0.38)';ctx.fillRect(0,H-20,W,20);
+ctx.fillStyle='#5a5a8a';ctx.font='8px Courier New';ctx.textAlign='left';
+ctx.fillText('R pinch: next param  ·  L pinch: adjust  ·  Both: cycle mode + mark  ·  Grab: reposition panel',10,H-6);
+ctx.fillStyle='#3a3a6a';ctx.textAlign='right';
+ctx.fillText('● CAM/POS H:242,258  ● AGENTS 10  ● FIELD E 1.34  ● SPEED 1.00×  ● FPS 72',W-10,H-6);
+
+// ── 6. VIGNETTE ───────────────────────────────────────────────
+const vig=ctx.createRadialGradient(W/2,H/2,H*0.2,W/2,H/2,H*0.78);
+vig.addColorStop(0,'rgba(0,0,0,0)');vig.addColorStop(1,'rgba(0,0,18,0.52)');
+ctx.fillStyle=vig;ctx.fillRect(0,0,W,H);
+</script>
+</body>
+</html>
